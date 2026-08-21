@@ -13,6 +13,7 @@ const GRID_X := 43.0
 
 const MIN_PULL_DISTANCE := 14.0
 const MAX_PULL_DISTANCE := 300.0
+const RELEASE_PULL_DISTANCE := 48.0
 const MIN_UPWARD_COMPONENT := 0.045
 const BALL_SPEED := 760.0
 
@@ -28,6 +29,7 @@ var launcher := Vector2(W * 0.5, RETURN_Y)
 var aim_direction := Vector2(0, -1)
 var is_aiming := false
 var drag_origin := Vector2.ZERO
+var pull_distance := 0.0
 var pull_strength := 0.0
 var ball: CharacterBody2D
 var ball_velocity := Vector2.ZERO
@@ -152,19 +154,24 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _begin_aim(pointer: Vector2) -> void:
 	drag_origin = pointer
+	pull_distance = 0.0
 	pull_strength = 0.0
 	is_aiming = false
 
 
 func _update_drag_aim(pointer: Vector2) -> void:
 	var pull := pointer - drag_origin
-	var pull_distance := pull.length()
+	pull_distance = maxf(0.0, pull.y)
+
+	# Vertical pull controls only the guide strength. Returning to the
+	# original touch height fully retracts the guide and cancels the shot.
 	if pull_distance < MIN_PULL_DISTANCE:
 		pull_strength = 0.0
 		is_aiming = false
 		return
 
-	var candidate := -pull.normalized()
+	# Horizontal pull adjusts the angle without changing guide strength.
+	var candidate := Vector2(-pull.x, -pull_distance).normalized()
 	if candidate.y > -MIN_UPWARD_COMPONENT:
 		candidate.y = -MIN_UPWARD_COMPONENT
 		candidate = candidate.normalized()
@@ -179,9 +186,10 @@ func _update_drag_aim(pointer: Vector2) -> void:
 
 
 func _release_aim() -> void:
-	if is_aiming and pull_strength > 0.0:
+	if is_aiming and pull_distance >= RELEASE_PULL_DISTANCE:
 		_launch()
 	is_aiming = false
+	pull_distance = 0.0
 	pull_strength = 0.0
 
 
@@ -221,6 +229,10 @@ func _hit_block(body: StaticBody2D) -> void:
 
 
 func _reset_ball() -> void:
+	# The first ball to cross the return line determines the next shot origin.
+	# There is one ball for now; this rule remains valid when volleys are added.
+	launcher.x = clampf(ball.position.x, BOARD_LEFT + 10.0, BOARD_RIGHT - 10.0)
+	launcher.y = RETURN_Y
 	ball_active = false
 	ball_velocity = Vector2.ZERO
 	ball.position = launcher
