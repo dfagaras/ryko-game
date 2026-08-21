@@ -11,6 +11,11 @@ const CELL := 82.0
 const GAP := 10.0
 const GRID_X := 43.0
 
+const MIN_PULL_DISTANCE := 14.0
+const MAX_PULL_DISTANCE := 300.0
+const MIN_UPWARD_COMPONENT := 0.045
+const BALL_SPEED := 760.0
+
 const BG := Color("#08191c")
 const PANEL := Color("#0d262a")
 const AMBER := Color("#ffb84a")
@@ -22,6 +27,8 @@ const CREAM := Color("#f3e7c5")
 var launcher := Vector2(W * 0.5, RETURN_Y)
 var aim_direction := Vector2(0, -1)
 var is_aiming := false
+var drag_origin := Vector2.ZERO
+var pull_strength := 0.0
 var ball: CharacterBody2D
 var ball_velocity := Vector2.ZERO
 var ball_active := false
@@ -125,46 +132,62 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			_update_aim(event.position)
-			is_aiming = true
+			_begin_aim(event.position)
 		else:
-			if is_aiming:
-				_launch()
-			is_aiming = false
+			_release_aim()
 		queue_redraw()
 	elif event is InputEventScreenDrag:
-		_update_aim(event.position)
-		is_aiming = true
+		_update_drag_aim(event.position)
 		queue_redraw()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_update_aim(event.position)
-			is_aiming = true
+			_begin_aim(event.position)
 		else:
-			if is_aiming:
-				_launch()
-			is_aiming = false
+			_release_aim()
 		queue_redraw()
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		_update_aim(event.position)
-		is_aiming = true
+		_update_drag_aim(event.position)
 		queue_redraw()
 
 
-func _update_aim(pointer: Vector2) -> void:
-	var candidate := pointer - launcher
-	if candidate.length() < 20.0:
+func _begin_aim(pointer: Vector2) -> void:
+	drag_origin = pointer
+	pull_strength = 0.0
+	is_aiming = false
+
+
+func _update_drag_aim(pointer: Vector2) -> void:
+	var pull := pointer - drag_origin
+	var pull_distance := pull.length()
+	if pull_distance < MIN_PULL_DISTANCE:
+		pull_strength = 0.0
+		is_aiming = false
 		return
-	candidate = candidate.normalized()
-	if candidate.y > -0.12:
-		candidate.y = -0.12
+
+	var candidate := -pull.normalized()
+	if candidate.y > -MIN_UPWARD_COMPONENT:
+		candidate.y = -MIN_UPWARD_COMPONENT
 		candidate = candidate.normalized()
+
 	aim_direction = candidate
+	pull_strength = clamp(
+		(pull_distance - MIN_PULL_DISTANCE) / (MAX_PULL_DISTANCE - MIN_PULL_DISTANCE),
+		0.0,
+		1.0
+	)
+	is_aiming = true
+
+
+func _release_aim() -> void:
+	if is_aiming and pull_strength > 0.0:
+		_launch()
+	is_aiming = false
+	pull_strength = 0.0
 
 
 func _launch() -> void:
 	ball_active = true
-	ball_velocity = aim_direction * 760.0
+	ball_velocity = aim_direction * BALL_SPEED
 
 
 func _physics_process(delta: float) -> void:
@@ -173,7 +196,7 @@ func _physics_process(delta: float) -> void:
 
 	var collision := ball.move_and_collide(ball_velocity * delta)
 	if collision:
-		ball_velocity = ball_velocity.bounce(collision.get_normal()).normalized() * 760.0
+		ball_velocity = ball_velocity.bounce(collision.get_normal()).normalized() * BALL_SPEED
 		var collider := collision.get_collider()
 		if collider is StaticBody2D and collider.get_meta("kind", "") == "block":
 			_hit_block(collider)
@@ -227,11 +250,26 @@ func _draw() -> void:
 	if not ball_active:
 		_draw_launcher()
 		if is_aiming:
-			var hit := _first_aim_hit()
-			draw_line(launcher + aim_direction * 20.0, hit, Color(AQUA, 0.68), 3.0, true)
+			_draw_aim_guide()
 
 	draw_circle(ball.position, 9.0, AQUA)
 	draw_circle(ball.position, 4.0, CREAM)
+
+
+func _draw_aim_guide() -> void:
+	var start := launcher + aim_direction * 56.0
+	var hit := _first_aim_hit()
+	var available_length := maxf(0.0, start.distance_to(hit) - 5.0)
+	var desired_length := lerpf(38.0, 980.0, pow(pull_strength, 0.78))
+	var guide_length := minf(available_length, desired_length)
+	var dot_radius := lerpf(1.4, 5.2, pull_strength)
+	var dot_spacing := lerpf(10.0, 22.0, pull_strength)
+	var distance := 0.0
+
+	while distance <= guide_length:
+		var fade := lerpf(0.96, 0.62, distance / maxf(guide_length, 1.0))
+		draw_circle(start + aim_direction * distance, dot_radius, Color(AQUA, fade))
+		distance += dot_spacing
 
 
 func _draw_header() -> void:
