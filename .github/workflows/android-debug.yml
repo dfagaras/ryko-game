@@ -37,6 +37,11 @@ jobs:
       - name: Configure Android SDK and debug signing
         shell: bash
         run: |
+          yes | sdkmanager --sdk_root=/usr/lib/android-sdk --licenses >/dev/null || true
+          sdkmanager --sdk_root=/usr/lib/android-sdk \
+            "platform-tools" \
+            "build-tools;35.0.1" \
+            "platforms;android-35"
           java_home_path="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
           mkdir -p "$HOME/.config/godot" "$HOME/.android"
           {
