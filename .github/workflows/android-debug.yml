@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Check out develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install export templates
         shell: bash
@@ -34,10 +34,28 @@ jobs:
             cp -R "$template_dir" "$HOME/.local/share/godot/export_templates/$template_name"
           fi
 
+      - name: Configure Android SDK and debug signing
+        shell: bash
+        run: |
+          java_home_path="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
+          mkdir -p "$HOME/.config/godot" "$HOME/.android"
+          {
+            echo '[gd_resource type="EditorSettings" format=3]'
+            echo
+            echo '[resource]'
+            echo 'export/android/android_sdk_path = "/usr/lib/android-sdk"'
+            echo "export/android/java_sdk_path = \"$java_home_path\""
+          } > "$HOME/.config/godot/editor_settings-4.tres"
+          keytool -genkeypair             -keystore "$HOME/.android/debug.keystore"             -storepass android             -alias androiddebugkey             -keypass android             -dname "CN=Android Debug,O=RYKO,C=RO"             -keyalg RSA             -keysize 2048             -validity 10000
+
       - name: Import project
         run: godot --headless --editor --quit
 
       - name: Build debug APK
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /github/home/.android/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
           mkdir -p build
           godot --headless --export-debug "Android" build/ryko-debug.apk
