@@ -1,0 +1,51 @@
+name: Android Debug APK
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build RYKO debug APK
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4
+
+    steps:
+      - name: Check out develop
+        uses: actions/checkout@v4
+
+      - name: Install export templates
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          template_dir="$(find /root/.local/share/godot/export_templates -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          if [ -z "$template_dir" ]; then
+            echo "Godot export templates were not found in the build image."
+            exit 1
+          fi
+          template_name="$(basename "$template_dir")"
+          if [ "$template_dir" != "$HOME/.local/share/godot/export_templates/$template_name" ]; then
+            cp -R "$template_dir" "$HOME/.local/share/godot/export_templates/$template_name"
+          fi
+
+      - name: Import project
+        run: godot --headless --editor --quit
+
+      - name: Build debug APK
+        run: |
+          mkdir -p build
+          godot --headless --export-debug "Android" build/ryko-debug.apk
+
+      - name: Upload phone build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryko-android-debug
+          path: build/ryko-debug.apk
+          if-no-files-found: error
+          retention-days: 14
