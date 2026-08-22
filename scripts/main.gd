@@ -21,7 +21,10 @@ const ROW_DROP_DURATION := 0.46
 # Preserve the original cell centers while expanding each block into the old
 # empty space. The remaining gap now matches the four-pixel outline width.
 const GRID_X := 40.0
-const GRID_Y := 239.0
+# Reserve one complete incoming-row slot below the top frame. New blocks start
+# in that slot and descend into row zero without crossing the frame or
+# overlapping the previous top row.
+const GRID_Y := BOARD_TOP + ROW_STEP
 const COLUMN_COUNT := 7
 const LAST_PLAYABLE_BLOCK_ROW := 8
 const LAUNCH_LINE_Y := GRID_Y + LAST_PLAYABLE_BLOCK_ROW * ROW_STEP + CELL
@@ -171,6 +174,14 @@ func _cell_center(column: int, row: int) -> Vector2:
 	return Vector2(GRID_X + column * ROW_STEP + CELL * 0.5, GRID_Y + row * ROW_STEP + CELL * 0.5)
 
 
+func _spawn_position(column: int, row: int) -> Vector2:
+	if row < 0:
+		# Incoming content starts fully inside the board, touching the top edge
+		# without ever drawing over the header or top frame.
+		return Vector2(_cell_center(column, 0).x, BOARD_TOP + CELL * 0.5)
+	return _cell_center(column, row)
+
+
 func _spawn_row(hp: int, row: int = 0) -> void:
 	var columns := _shuffled_columns()
 	var block_count := _block_count_for_turn()
@@ -249,7 +260,7 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	pickups.append({
 		"column": pickup_column,
 		"row": row,
-		"position": _cell_center(pickup_column, row),
+		"position": _spawn_position(pickup_column, row),
 		"collected": false
 	})
 
@@ -260,9 +271,9 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 		ion_powers.append({
 			"column": ion_column,
 			"row": row,
-			"position": _cell_center(ion_column, row),
+			"position": _spawn_position(ion_column, row),
 			"activated": false,
-			"triggered_balls": {}
+			"balls_inside": {}
 		})
 
 
@@ -355,7 +366,7 @@ func _shuffled_columns() -> Array[int]:
 
 func _add_square_block(column: int, row: int, hp: int, variant: String = "normal", absorbing_sides: Array[String] = []) -> void:
 	var body := StaticBody2D.new()
-	body.position = _cell_center(column, row)
+	body.position = _spawn_position(column, row)
 	body.set_meta("kind", "block")
 	body.set_meta("block_index", blocks.size())
 	var collision := CollisionShape2D.new()
@@ -381,7 +392,7 @@ func _add_square_block(column: int, row: int, hp: int, variant: String = "normal
 
 func _add_triangle_block(column: int, row: int, hp: int, orientation: String, variant: String = "normal") -> void:
 	var body := StaticBody2D.new()
-	body.position = _cell_center(column, row)
+	body.position = _spawn_position(column, row)
 	body.set_meta("kind", "block")
 	body.set_meta("block_index", blocks.size())
 	var collision := CollisionPolygon2D.new()
@@ -689,12 +700,13 @@ func _activate_ion_powers_at(ball: CharacterBody2D) -> void:
 	var ball_id := ball.get_instance_id()
 	for power in ion_powers:
 		var power_position: Vector2 = power["position"]
+		var balls_inside: Dictionary = power["balls_inside"]
 		if ball.position.distance_to(power_position) > ION_BEAM_RADIUS + BALL_RADIUS:
+			balls_inside.erase(ball_id)
 			continue
-		var triggered_balls: Dictionary = power["triggered_balls"]
-		if triggered_balls.has(ball_id):
+		if balls_inside.has(ball_id):
 			continue
-		triggered_balls[ball_id] = true
+		balls_inside[ball_id] = true
 		power["activated"] = true
 		_fire_ion_beam(power_position.y)
 
@@ -780,21 +792,24 @@ func _begin_board_advance() -> void:
 		var body: StaticBody2D = item["body"] as StaticBody2D
 		if not is_instance_valid(body):
 			continue
-		item["row"] = int(item["row"]) + 1
+		var target_row := int(item["row"]) + 1
+		item["row"] = target_row
 		item["move_from"] = body.position
-		item["move_to"] = body.position + Vector2(0.0, ROW_STEP)
+		item["move_to"] = _cell_center(int(item["column"]), target_row)
 
 	for pickup in pickups:
-		pickup["row"] = int(pickup["row"]) + 1
+		var target_row := int(pickup["row"]) + 1
+		pickup["row"] = target_row
 		var pickup_position: Vector2 = pickup["position"]
 		pickup["move_from"] = pickup_position
-		pickup["move_to"] = pickup_position + Vector2(0.0, ROW_STEP)
+		pickup["move_to"] = _cell_center(int(pickup["column"]), target_row)
 
 	for power in ion_powers:
-		power["row"] = int(power["row"]) + 1
+		var target_row := int(power["row"]) + 1
+		power["row"] = target_row
 		var power_position: Vector2 = power["position"]
 		power["move_from"] = power_position
-		power["move_to"] = power_position + Vector2(0.0, ROW_STEP)
+		power["move_to"] = _cell_center(int(power["column"]), target_row)
 
 
 func _toggle_phase_blocks() -> void:
@@ -931,11 +946,17 @@ func _draw_active_balls() -> void:
 
 
 func _draw_aim_guide() -> void:
-	var start := launcher + aim_direction * 56.0
 	# The guide is intentionally visual-only: it passes over blocks exactly like
-	# the reference game, while the launched ball still uses real collisions.
-	var guide_length := lerpf(38.0, 980.0, pow(pull_strength, 0.78))
+	# the reference game, while stopping at the first board wall. No reflected
+	# trajectory is shown after that contact.
 	var dot_radius := lerpf(1.4, 5.2, pull_strength)
+	var start_offset := 56.0
+	var edge_distance := _distance_to_board_edge(launcher, aim_direction)
+	if edge_distance <= start_offset + dot_radius:
+		return
+	var start := launcher + aim_direction * start_offset
+	var requested_length := lerpf(38.0, 980.0, pow(pull_strength, 0.78))
+	var guide_length := minf(requested_length, edge_distance - start_offset - dot_radius)
 	var dot_spacing := lerpf(10.0, 22.0, pull_strength)
 	var segment_count := maxi(1, int(round(guide_length / dot_spacing)))
 
@@ -943,6 +964,19 @@ func _draw_aim_guide() -> void:
 		var distance := guide_length * float(index) / float(segment_count)
 		var fade := lerpf(0.96, 0.62, distance / maxf(guide_length, 1.0))
 		draw_circle(start + aim_direction * distance, dot_radius, Color(AQUA, fade))
+
+
+func _distance_to_board_edge(origin: Vector2, direction: Vector2) -> float:
+	var distance := 1000000.0
+	if direction.x < -0.0001:
+		distance = minf(distance, (BOARD_LEFT - origin.x) / direction.x)
+	elif direction.x > 0.0001:
+		distance = minf(distance, (BOARD_RIGHT - origin.x) / direction.x)
+	if direction.y < -0.0001:
+		distance = minf(distance, (BOARD_TOP - origin.y) / direction.y)
+	elif direction.y > 0.0001:
+		distance = minf(distance, (LAUNCH_LINE_Y - origin.y) / direction.y)
+	return maxf(0.0, distance)
 
 
 func _draw_header() -> void:
