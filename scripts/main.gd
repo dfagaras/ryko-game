@@ -14,14 +14,16 @@ const BOARD_RIGHT := 692.0
 const BOARD_TOP := 176.0
 const RETURN_Y := 1165.0
 const DANGER_Y := 1080.0
-const CELL := 82.0
-const TRIANGLE_WIDTH := 78.0
+const CELL := 88.0
+const TRIANGLE_WIDTH := CELL
 const TRIANGLE_HEIGHT := CELL
-const GAP := 10.0
+const GAP := 4.0
 const ROW_STEP := CELL + GAP
 const ROW_DROP_DURATION := 0.46
-const GRID_X := 43.0
-const GRID_Y := 242.0
+# Preserve the original cell centers while expanding each block into the old
+# empty space. The remaining gap now matches the four-pixel outline width.
+const GRID_X := 40.0
+const GRID_Y := 239.0
 const COLUMN_COUNT := 7
 
 const MIN_PULL_DISTANCE := 14.0
@@ -35,8 +37,10 @@ const BALL_LAUNCH_INTERVAL := 0.075
 const PICKUP_RADIUS := 19.0
 const TRIANGLE_CHANCE := 0.28
 const TRIANGLE_ORIENTATIONS := ["top_left", "top_right", "bottom_left", "bottom_right"]
+const BLOCK_OUTLINE_WIDTH := 6.0
 
 const BG := Color("#08191c")
+const PLAYFIELD_BG := Color("#0b2225")
 const PANEL := Color("#0d262a")
 const AMBER := Color("#ffb84a")
 const AQUA := Color("#56e0d2")
@@ -70,12 +74,15 @@ var balls: Array[Dictionary] = []
 var blocks: Array[Dictionary] = []
 var pickups: Array[Dictionary] = []
 var fallback_font: Font
+var aim_cast_shape: CircleShape2D
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
 
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
+	aim_cast_shape = CircleShape2D.new()
+	aim_cast_shape.radius = BALL_COLLISION_RADIUS
 	_create_boundaries()
 	_start_new_run()
 
@@ -513,16 +520,26 @@ func _process_board_advance(delta: float) -> void:
 
 
 func _first_aim_hit() -> Vector2:
-	var target := launcher + aim_direction * 1600.0
-	var query := PhysicsRayQueryParameters2D.create(launcher + aim_direction * 14.0, target)
-	var result := get_world_2d().direct_space_state.intersect_ray(query)
-	if result.has("position"):
-		return result["position"]
-	return target
+	# A ray has zero width and can incorrectly preview a route through diagonal
+	# gaps that the real ball cannot fit through. Sweep the actual ball shape.
+	var cast_start := launcher + aim_direction * 14.0
+	var cast_motion := aim_direction * 1600.0
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = aim_cast_shape
+	query.transform = Transform2D(0.0, cast_start)
+	query.motion = cast_motion
+	query.collision_mask = 1
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	var fractions := get_world_2d().direct_space_state.cast_motion(query)
+	if fractions.size() >= 1:
+		return cast_start + cast_motion * fractions[0]
+	return cast_start + cast_motion
 
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), BG)
+	_draw_playfield()
 	draw_rect(Rect2(0, 0, W, 154), PANEL)
 	draw_line(Vector2(24, 154), Vector2(W - 24, 154), MUTED, 2.0)
 
@@ -540,6 +557,19 @@ func _draw() -> void:
 	_draw_active_balls()
 	if state == TurnState.GAME_OVER:
 		_draw_game_over()
+
+
+func _draw_playfield() -> void:
+	var playfield_bottom := RETURN_Y + 32.0
+	var playfield_rect := Rect2(
+		Vector2(BOARD_LEFT, BOARD_TOP),
+		Vector2(BOARD_RIGHT - BOARD_LEFT, playfield_bottom - BOARD_TOP)
+	)
+	draw_rect(playfield_rect, PLAYFIELD_BG, true)
+	var wall_color := Color(MUTED, 0.82)
+	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), wall_color, 3.0, true)
+	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), wall_color, 3.0, true)
+	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_RIGHT, BOARD_TOP), wall_color, 3.0, true)
 
 
 func _draw_active_balls() -> void:
@@ -601,7 +631,7 @@ func _draw_blocks() -> void:
 		if item["shape"] == "square":
 			var rect := Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
 			draw_rect(rect, Color(PANEL, 0.72), true)
-			draw_rect(rect, AMBER, false, 4.0)
+			draw_rect(rect, AMBER, false, BLOCK_OUTLINE_WIDTH)
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -612,8 +642,11 @@ func _draw_blocks() -> void:
 			centroid /= float(local_points.size())
 			label_center = center + centroid
 			draw_colored_polygon(points, Color(PANEL, 0.72))
-			var outline := PackedVector2Array([points[0], points[1], points[2], points[0]])
-			draw_polyline(outline, CORAL, 4.0, true)
+			# Draw each edge independently. A closed polyline creates a long miter
+			# spike at the triangle's acute corner, making it look outside its row.
+			draw_line(points[0], points[1], CORAL, BLOCK_OUTLINE_WIDTH, true)
+			draw_line(points[1], points[2], CORAL, BLOCK_OUTLINE_WIDTH, true)
+			draw_line(points[2], points[0], CORAL, BLOCK_OUTLINE_WIDTH, true)
 		_draw_centered_label(hp, label_center, 24, CREAM)
 
 
