@@ -272,6 +272,7 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 			"column": ion_column,
 			"row": row,
 			"position": _spawn_position(ion_column, row),
+			"orientation": "horizontal" if rng.randf() < 0.5 else "vertical",
 			"activated": false,
 			"balls_inside": {}
 		})
@@ -708,12 +709,13 @@ func _activate_ion_powers_at(ball: CharacterBody2D) -> void:
 			continue
 		balls_inside[ball_id] = true
 		power["activated"] = true
-		_fire_ion_beam(power_position.y)
+		_fire_ion_beam(power_position, String(power["orientation"]))
 
 
-func _fire_ion_beam(beam_y: float) -> void:
+func _fire_ion_beam(beam_position: Vector2, orientation: String) -> void:
 	ion_beam_effects.append({
-		"y": beam_y,
+		"position": beam_position,
+		"orientation": orientation,
 		"elapsed": 0.0
 	})
 	for item in blocks:
@@ -723,7 +725,12 @@ func _fire_ion_beam(beam_y: float) -> void:
 		if String(item.get("variant", "normal")) == "phase" and not bool(item.get("phase_active", true)):
 			continue
 		var block_position: Vector2 = item["position"]
-		if absf(block_position.y - beam_y) <= CELL * 0.5:
+		var is_in_beam := false
+		if orientation == "vertical":
+			is_in_beam = absf(block_position.x - beam_position.x) <= CELL * 0.5
+		else:
+			is_in_beam = absf(block_position.y - beam_position.y) <= CELL * 0.5
+		if is_in_beam:
 			_hit_block(body)
 
 
@@ -1139,19 +1146,33 @@ func _draw_ion_powers() -> void:
 	for power in ion_powers:
 		var center: Vector2 = power["position"]
 		var color := CORAL if bool(power["activated"]) else ION_BLUE
+		var orientation := String(power["orientation"])
 		draw_circle(center, ION_BEAM_RADIUS, Color(PANEL, 0.92))
 		draw_arc(center, ION_BEAM_RADIUS, 0.0, TAU, 32, color, 4.0, true)
-		draw_line(center + Vector2(-12.0, 0.0), center + Vector2(12.0, 0.0), color, 5.0, true)
-		draw_colored_polygon(PackedVector2Array([
-			center + Vector2(-16.0, 0.0),
-			center + Vector2(-8.0, -6.0),
-			center + Vector2(-8.0, 6.0)
-		]), color)
-		draw_colored_polygon(PackedVector2Array([
-			center + Vector2(16.0, 0.0),
-			center + Vector2(8.0, -6.0),
-			center + Vector2(8.0, 6.0)
-		]), color)
+		if orientation == "vertical":
+			draw_line(center + Vector2(0.0, -12.0), center + Vector2(0.0, 12.0), color, 5.0, true)
+			draw_colored_polygon(PackedVector2Array([
+				center + Vector2(0.0, -16.0),
+				center + Vector2(-6.0, -8.0),
+				center + Vector2(6.0, -8.0)
+			]), color)
+			draw_colored_polygon(PackedVector2Array([
+				center + Vector2(0.0, 16.0),
+				center + Vector2(-6.0, 8.0),
+				center + Vector2(6.0, 8.0)
+			]), color)
+		else:
+			draw_line(center + Vector2(-12.0, 0.0), center + Vector2(12.0, 0.0), color, 5.0, true)
+			draw_colored_polygon(PackedVector2Array([
+				center + Vector2(-16.0, 0.0),
+				center + Vector2(-8.0, -6.0),
+				center + Vector2(-8.0, 6.0)
+			]), color)
+			draw_colored_polygon(PackedVector2Array([
+				center + Vector2(16.0, 0.0),
+				center + Vector2(8.0, -6.0),
+				center + Vector2(8.0, 6.0)
+			]), color)
 
 
 func _draw_ion_beam_effects() -> void:
@@ -1160,18 +1181,43 @@ func _draw_ion_beam_effects() -> void:
 		var pulse := sin(progress * PI)
 		var fade := 1.0 - progress
 		var glow_width := 5.0 + pulse * 17.0
-		var beam_y := float(effect["y"])
-		# Rectangles are clipped by construction to the exact board width.
-		draw_rect(
-			Rect2(Vector2(BOARD_LEFT, beam_y - glow_width * 0.5), Vector2(BOARD_RIGHT - BOARD_LEFT, glow_width)),
-			Color(ION_BLUE, fade * 0.34),
-			true
-		)
-		draw_rect(
-			Rect2(Vector2(BOARD_LEFT, beam_y - 2.0), Vector2(BOARD_RIGHT - BOARD_LEFT, 4.0)),
-			Color(CREAM, fade),
-			true
-		)
+		var beam_position: Vector2 = effect["position"]
+		var orientation := String(effect["orientation"])
+		# Both variants are bounded by construction to the playable board.
+		if orientation == "vertical":
+			draw_rect(
+				Rect2(
+					Vector2(beam_position.x - glow_width * 0.5, BOARD_TOP),
+					Vector2(glow_width, LAUNCH_LINE_Y - BOARD_TOP)
+				),
+				Color(ION_BLUE, fade * 0.34),
+				true
+			)
+			draw_rect(
+				Rect2(
+					Vector2(beam_position.x - 2.0, BOARD_TOP),
+					Vector2(4.0, LAUNCH_LINE_Y - BOARD_TOP)
+				),
+				Color(CREAM, fade),
+				true
+			)
+		else:
+			draw_rect(
+				Rect2(
+					Vector2(BOARD_LEFT, beam_position.y - glow_width * 0.5),
+					Vector2(BOARD_RIGHT - BOARD_LEFT, glow_width)
+				),
+				Color(ION_BLUE, fade * 0.34),
+				true
+			)
+			draw_rect(
+				Rect2(
+					Vector2(BOARD_LEFT, beam_position.y - 2.0),
+					Vector2(BOARD_RIGHT - BOARD_LEFT, 4.0)
+				),
+				Color(CREAM, fade),
+				true
+			)
 
 
 func _draw_launcher() -> void:
