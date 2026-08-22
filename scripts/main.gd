@@ -41,6 +41,8 @@ const PICKUP_RADIUS := 19.0
 const TRIANGLE_CHANCE := 0.28
 const TRIANGLE_ORIENTATIONS := ["top_left", "top_right", "bottom_left", "bottom_right"]
 const BLOCK_OUTLINE_WIDTH := 6.0
+const DENSE_BLOCK_START_TURN := 10
+const DENSE_BLOCK_MULTIPLIER := 2
 
 const BG := Color("#08191c")
 const PLAYFIELD_BG := Color("#0b2225")
@@ -156,14 +158,35 @@ func _cell_center(column: int, row: int) -> Vector2:
 func _spawn_row(hp: int, row: int = 0) -> void:
 	var columns := _shuffled_columns()
 	var block_count := _block_count_for_turn()
+	var row_shapes: Array[String] = []
+	var row_orientations: Array[String] = []
+	var square_indices: Array[int] = []
+
+	for index in range(block_count):
+		if turn >= 3 and rng.randf() < TRIANGLE_CHANCE:
+			var orientation: String = TRIANGLE_ORIENTATIONS[rng.randi_range(0, TRIANGLE_ORIENTATIONS.size() - 1)]
+			row_shapes.append("triangle")
+			row_orientations.append(orientation)
+		else:
+			row_shapes.append("square")
+			row_orientations.append("")
+			square_indices.append(index)
+
+	# Dense blocks are intentionally limited to one per row and can only be
+	# assigned to a square. The roll happens once per row so triangle frequency
+	# does not accidentally make dense blocks more common.
+	var dense_index := -1
+	if not square_indices.is_empty() and rng.randf() < _dense_block_spawn_chance():
+		dense_index = square_indices[rng.randi_range(0, square_indices.size() - 1)]
 
 	for index in range(block_count):
 		var column := columns[index]
-		if turn >= 3 and rng.randf() < TRIANGLE_CHANCE:
-			var orientation: String = TRIANGLE_ORIENTATIONS[rng.randi_range(0, TRIANGLE_ORIENTATIONS.size() - 1)]
-			_add_triangle_block(column, row, hp, orientation)
+		if row_shapes[index] == "triangle":
+			_add_triangle_block(column, row, hp, row_orientations[index])
 		else:
-			_add_square_block(column, row, hp)
+			var is_dense := index == dense_index
+			var square_hp := hp * DENSE_BLOCK_MULTIPLIER if is_dense else hp
+			_add_square_block(column, row, square_hp, is_dense)
 
 	var pickup_column := columns[block_count]
 	pickups.append({
@@ -184,6 +207,16 @@ func _block_count_for_turn() -> int:
 	return rng.randi_range(4, 6)
 
 
+func _dense_block_spawn_chance() -> float:
+	if turn < DENSE_BLOCK_START_TURN:
+		return 0.0
+	if turn <= 19:
+		return 0.22
+	if turn <= 29:
+		return 0.30
+	return 0.38
+
+
 func _shuffled_columns() -> Array[int]:
 	var result: Array[int] = []
 	for column in range(COLUMN_COUNT):
@@ -196,7 +229,7 @@ func _shuffled_columns() -> Array[int]:
 	return result
 
 
-func _add_square_block(column: int, row: int, hp: int) -> void:
+func _add_square_block(column: int, row: int, hp: int, is_dense: bool = false) -> void:
 	var body := StaticBody2D.new()
 	body.position = _cell_center(column, row)
 	body.set_meta("kind", "block")
@@ -210,6 +243,8 @@ func _add_square_block(column: int, row: int, hp: int) -> void:
 	blocks.append({
 		"body": body,
 		"shape": "square",
+		"variant": "dense" if is_dense else "normal",
+		"hp_multiplier": DENSE_BLOCK_MULTIPLIER if is_dense else 1,
 		"hp": hp,
 		"position": body.position,
 		"column": column,
@@ -230,6 +265,8 @@ func _add_triangle_block(column: int, row: int, hp: int, orientation: String) ->
 	blocks.append({
 		"body": body,
 		"shape": "triangle",
+		"variant": "normal",
+		"hp_multiplier": 1,
 		"hp": hp,
 		"position": body.position,
 		"column": column,
@@ -649,10 +686,16 @@ func _draw_blocks() -> void:
 		var hp := str(item["hp"])
 		if item["shape"] == "square":
 			var rect := Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
+			var is_dense := String(item.get("variant", "normal")) == "dense"
 			# Draw the border as an outer solid shape plus an inset fill. Unlike a
 			# centered stroke, this can never overlap a neighbouring cell.
-			draw_rect(rect, AMBER, true)
+			draw_rect(rect, AQUA if is_dense else AMBER, true)
 			draw_rect(rect.grow(-BLOCK_OUTLINE_WIDTH), PANEL, true)
+			if is_dense:
+				var inner_border := rect.grow(-(BLOCK_OUTLINE_WIDTH + 7.0))
+				draw_rect(inner_border, AQUA, false, 3.0, true)
+				_draw_centered_label("x2", center + Vector2(0.0, -28.0), 13, CORAL)
+				label_center.y += 7.0
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
