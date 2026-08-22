@@ -9,13 +9,14 @@ enum TurnState {
 
 const W := 720.0
 const H := 1280.0
-const BOARD_LEFT := 24.0
-const BOARD_RIGHT := 696.0
+const BOARD_LEFT := 28.0
+const BOARD_RIGHT := 692.0
 const BOARD_TOP := 176.0
 const RETURN_Y := 1165.0
 const DANGER_Y := 1080.0
 const CELL := 82.0
-const TRIANGLE_SIZE := 78.0
+const TRIANGLE_WIDTH := 78.0
+const TRIANGLE_HEIGHT := CELL
 const GAP := 10.0
 const ROW_STEP := CELL + GAP
 const ROW_DROP_DURATION := 0.46
@@ -28,7 +29,8 @@ const MAX_PULL_DISTANCE := 300.0
 const RELEASE_PULL_DISTANCE := 48.0
 const MIN_UPWARD_COMPONENT := 0.045
 const BALL_SPEED := 760.0
-const BALL_RADIUS := 8.0
+const BALL_RADIUS := 9.0
+const BALL_COLLISION_RADIUS := 10.0
 const BALL_LAUNCH_INTERVAL := 0.075
 const PICKUP_RADIUS := 19.0
 const TRIANGLE_CHANCE := 0.28
@@ -230,16 +232,19 @@ func _add_triangle_block(column: int, row: int, hp: int, orientation: String) ->
 
 
 func _triangle_local_points(orientation: String) -> PackedVector2Array:
-	var half := TRIANGLE_SIZE * 0.5
+	# Keep the same top and bottom alignment as squares, while retaining the
+	# slightly narrower optical width that makes triangles feel equally sized.
+	var half_width := TRIANGLE_WIDTH * 0.5
+	var half_height := TRIANGLE_HEIGHT * 0.5
 	match orientation:
 		"top_right":
-			return PackedVector2Array([Vector2(-half, -half), Vector2(half, -half), Vector2(half, half)])
+			return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(half_width, -half_height), Vector2(half_width, half_height)])
 		"bottom_left":
-			return PackedVector2Array([Vector2(-half, -half), Vector2(-half, half), Vector2(half, half)])
+			return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(-half_width, half_height), Vector2(half_width, half_height)])
 		"bottom_right":
-			return PackedVector2Array([Vector2(half, -half), Vector2(-half, half), Vector2(half, half)])
+			return PackedVector2Array([Vector2(half_width, -half_height), Vector2(-half_width, half_height), Vector2(half_width, half_height)])
 		_:
-			return PackedVector2Array([Vector2(-half, -half), Vector2(half, -half), Vector2(-half, half)])
+			return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(half_width, -half_height), Vector2(-half_width, half_height)])
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -330,7 +335,9 @@ func _spawn_volley_ball() -> void:
 	body.collision_mask = 1
 	var collision := CollisionShape2D.new()
 	var shape := CircleShape2D.new()
-	shape.radius = BALL_RADIUS
+	# The collision radius is intentionally one pixel larger than the rendered
+	# ball so it never appears embedded in a block outline at contact.
+	shape.radius = BALL_COLLISION_RADIUS
 	collision.shape = shape
 	body.add_child(collision)
 	add_child(body)
@@ -410,7 +417,7 @@ func _collect_pickups_at(ball_position: Vector2) -> void:
 func _return_ball(entry: Dictionary) -> void:
 	var body: CharacterBody2D = entry["body"] as CharacterBody2D
 	if not first_return_recorded:
-		next_launcher_x = clampf(body.position.x, BOARD_LEFT + BALL_RADIUS, BOARD_RIGHT - BALL_RADIUS)
+		next_launcher_x = clampf(body.position.x, BOARD_LEFT + BALL_COLLISION_RADIUS, BOARD_RIGHT - BALL_COLLISION_RADIUS)
 		first_return_recorded = true
 	entry["returned"] = true
 	active_ball_count -= 1
@@ -542,7 +549,7 @@ func _draw_active_balls() -> void:
 		var body: CharacterBody2D = entry["body"] as CharacterBody2D
 		if not is_instance_valid(body):
 			continue
-		draw_circle(body.position, 9.0, AQUA)
+		draw_circle(body.position, BALL_RADIUS, AQUA)
 		draw_circle(body.position, 4.0, CREAM)
 
 
