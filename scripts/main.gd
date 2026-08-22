@@ -45,6 +45,7 @@ const DENSE_BLOCK_START_TURN := 10
 const DENSE_BLOCK_MULTIPLIER := 2
 const REGENERATIVE_BLOCK_START_TURN := 12
 const REGENERATIVE_GROWTH := 1.5
+const BLACK_HOLE_BLOCK_START_TURN := 5
 
 const BG := Color("#08191c")
 const PLAYFIELD_BG := Color("#0b2225")
@@ -53,6 +54,8 @@ const AMBER := Color("#ffb84a")
 const AQUA := Color("#56e0d2")
 const CORAL := Color("#ff6b5f")
 const REGENERATIVE_GREEN := Color("#9ee66f")
+const VOID_PURPLE := Color("#b36cff")
+const VOID_DARK := Color("#020608")
 const MUTED := Color("#55777a")
 const CREAM := Color("#f3e7c5")
 
@@ -164,6 +167,9 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	var row_shapes: Array[String] = []
 	var row_orientations: Array[String] = []
 	var square_indices: Array[int] = []
+	var row_columns: Array[int] = []
+	for index in range(block_count):
+		row_columns.append(columns[index])
 
 	for index in range(block_count):
 		if turn >= 3 and rng.randf() < TRIANGLE_CHANCE:
@@ -182,27 +188,41 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	if not square_indices.is_empty() and rng.randf() < _dense_block_spawn_chance():
 		dense_index = square_indices[rng.randi_range(0, square_indices.size() - 1)]
 
-	# Regenerative blocks can use either base shape, but never replace the dense
-	# square selected above. Limit them to one per row while we tune difficulty.
+	# Regenerative blocks are square-only and never replace the dense square.
 	var regenerative_index := -1
 	var regenerative_candidates: Array[int] = []
-	for index in range(block_count):
+	for index in square_indices:
 		if index != dense_index:
 			regenerative_candidates.append(index)
 	if not regenerative_candidates.is_empty() and rng.randf() < _regenerative_block_spawn_chance():
 		regenerative_index = regenerative_candidates[rng.randi_range(0, regenerative_candidates.size() - 1)]
 
+	# Black holes are square-only, limited to one per row, and cannot overlap
+	# another special variant.
+	var black_hole_index := -1
+	var black_hole_candidates: Array[int] = []
+	for index in square_indices:
+		if index != dense_index and index != regenerative_index:
+			black_hole_candidates.append(index)
+	if not black_hole_candidates.is_empty() and rng.randf() < _black_hole_block_spawn_chance():
+		black_hole_index = black_hole_candidates[rng.randi_range(0, black_hole_candidates.size() - 1)]
+
 	for index in range(block_count):
 		var column := columns[index]
 		var variant := "regenerative" if index == regenerative_index else "normal"
 		if row_shapes[index] == "triangle":
-			_add_triangle_block(column, row, hp, row_orientations[index], variant)
+			_add_triangle_block(column, row, hp, row_orientations[index])
 		else:
 			var is_dense := index == dense_index
 			var square_hp := hp * DENSE_BLOCK_MULTIPLIER if is_dense else hp
+			var absorbing_sides: Array[String] = []
 			if is_dense:
 				variant = "dense"
-			_add_square_block(column, row, square_hp, variant)
+			elif index == black_hole_index:
+				variant = "black_hole"
+				square_hp = maxi(1, int(floor(float(hp) * 0.5)))
+				absorbing_sides = _choose_black_hole_sides(column, row, row_columns)
+			_add_square_block(column, row, square_hp, variant, absorbing_sides)
 
 	var pickup_column := columns[block_count]
 	pickups.append({
@@ -243,6 +263,47 @@ func _regenerative_block_spawn_chance() -> float:
 	return 0.30
 
 
+func _black_hole_block_spawn_chance() -> float:
+	if turn < BLACK_HOLE_BLOCK_START_TURN:
+		return 0.0
+	if turn <= 9:
+		return 0.25
+	if turn <= 19:
+		return 0.30
+	return 0.35
+
+
+func _choose_black_hole_sides(column: int, row: int, row_columns: Array[int]) -> Array[String]:
+	var exposed: Array[String] = []
+	if column > 0 and not row_columns.has(column - 1):
+		exposed.append("left")
+	if column < COLUMN_COUNT - 1 and not row_columns.has(column + 1):
+		exposed.append("right")
+	# A freshly spawned row never has a block directly above it.
+	exposed.append("top")
+
+	var bottom_is_blocked := false
+	for item in blocks:
+		var body: StaticBody2D = item["body"] as StaticBody2D
+		if is_instance_valid(body) and int(item["column"]) == column and int(item["row"]) == row + 1:
+			bottom_is_blocked = true
+			break
+	if not bottom_is_blocked:
+		exposed.append("bottom")
+
+	for index in range(exposed.size() - 1, 0, -1):
+		var swap_index := rng.randi_range(0, index)
+		var value := exposed[index]
+		exposed[index] = exposed[swap_index]
+		exposed[swap_index] = value
+
+	var side_count := rng.randi_range(1, exposed.size())
+	var selected: Array[String] = []
+	for index in range(side_count):
+		selected.append(exposed[index])
+	return selected
+
+
 func _shuffled_columns() -> Array[int]:
 	var result: Array[int] = []
 	for column in range(COLUMN_COUNT):
@@ -255,7 +316,7 @@ func _shuffled_columns() -> Array[int]:
 	return result
 
 
-func _add_square_block(column: int, row: int, hp: int, variant: String = "normal") -> void:
+func _add_square_block(column: int, row: int, hp: int, variant: String = "normal", absorbing_sides: Array[String] = []) -> void:
 	var body := StaticBody2D.new()
 	body.position = _cell_center(column, row)
 	body.set_meta("kind", "block")
@@ -270,6 +331,7 @@ func _add_square_block(column: int, row: int, hp: int, variant: String = "normal
 		"body": body,
 		"shape": "square",
 		"variant": variant,
+		"absorbing_sides": absorbing_sides,
 		"hp_multiplier": DENSE_BLOCK_MULTIPLIER if variant == "dense" else 1,
 		"hp": hp,
 		"position": body.position,
@@ -279,7 +341,7 @@ func _add_square_block(column: int, row: int, hp: int, variant: String = "normal
 	})
 
 
-func _add_triangle_block(column: int, row: int, hp: int, orientation: String, variant: String = "normal") -> void:
+func _add_triangle_block(column: int, row: int, hp: int, orientation: String) -> void:
 	var body := StaticBody2D.new()
 	body.position = _cell_center(column, row)
 	body.set_meta("kind", "block")
@@ -291,7 +353,7 @@ func _add_triangle_block(column: int, row: int, hp: int, orientation: String, va
 	blocks.append({
 		"body": body,
 		"shape": "triangle",
-		"variant": variant,
+		"variant": "normal",
 		"hp_multiplier": 1,
 		"hp": hp,
 		"position": body.position,
@@ -512,7 +574,11 @@ func _physics_process(delta: float) -> void:
 			entry["velocity"] = velocity
 			var collider := collision.get_collider()
 			if collider is StaticBody2D and collider.get_meta("kind", "") == "block":
+				var should_absorb := _block_absorbs_ball(collider, collision.get_normal())
 				_hit_block(collider)
+				if should_absorb:
+					_consume_ball(entry)
+					continue
 
 		_collect_pickups_at(body.position)
 		if body.position.y > RETURN_Y + 32.0:
@@ -537,6 +603,35 @@ func _hit_block(body: StaticBody2D) -> void:
 		block_body.collision_layer = 0
 		block_body.queue_free()
 		item["body"] = null
+
+
+func _block_absorbs_ball(body: StaticBody2D, collision_normal: Vector2) -> bool:
+	var index := int(body.get_meta("block_index", -1))
+	if index < 0 or index >= blocks.size():
+		return false
+	var item := blocks[index]
+	if String(item.get("variant", "normal")) != "black_hole":
+		return false
+	var absorbing_sides: Array = item.get("absorbing_sides", [])
+	return absorbing_sides.has(_collision_side_from_normal(collision_normal))
+
+
+func _collision_side_from_normal(normal: Vector2) -> String:
+	if absf(normal.x) > absf(normal.y):
+		return "right" if normal.x > 0.0 else "left"
+	return "bottom" if normal.y > 0.0 else "top"
+
+
+func _consume_ball(entry: Dictionary) -> void:
+	if bool(entry["returned"]):
+		return
+	entry["returned"] = true
+	active_ball_count = maxi(0, active_ball_count - 1)
+	var body: CharacterBody2D = entry["body"] as CharacterBody2D
+	if is_instance_valid(body):
+		body.collision_layer = 0
+		body.queue_free()
+	entry["body"] = null
 
 
 func _collect_pickups_at(ball_position: Vector2) -> void:
@@ -768,11 +863,14 @@ func _draw_blocks() -> void:
 		if item["shape"] == "square":
 			var rect := Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
 			var is_dense := variant == "dense"
+			var is_black_hole := variant == "black_hole"
 			var border_color := AMBER
 			if is_dense:
 				border_color = AQUA
 			elif is_regenerative:
 				border_color = REGENERATIVE_GREEN
+			elif is_black_hole:
+				border_color = VOID_PURPLE
 			# Draw the border as an outer solid shape plus an inset fill. Unlike a
 			# centered stroke, this can never overlap a neighbouring cell.
 			draw_rect(rect, border_color, true)
@@ -785,6 +883,8 @@ func _draw_blocks() -> void:
 			elif is_regenerative:
 				_draw_centered_label("R", center + Vector2(0.0, -28.0), 13, REGENERATIVE_GREEN)
 				label_center.y += 7.0
+			elif is_black_hole:
+				_draw_black_hole_sides(rect, item.get("absorbing_sides", []))
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -798,12 +898,35 @@ func _draw_blocks() -> void:
 			var inner_points := PackedVector2Array()
 			for point in inner_local_points:
 				inner_points.append(center + point)
-			draw_colored_polygon(points, REGENERATIVE_GREEN if is_regenerative else CORAL)
+			draw_colored_polygon(points, CORAL)
 			draw_colored_polygon(inner_points, PANEL)
-			if is_regenerative:
-				_draw_centered_label("R", label_center + Vector2(0.0, -24.0), 13, REGENERATIVE_GREEN)
-				label_center.y += 7.0
 		_draw_centered_label(hp, label_center, 24, CREAM)
+
+
+func _draw_black_hole_sides(rect: Rect2, absorbing_sides: Array) -> void:
+	var center := rect.get_center()
+	var half_segment := 22.0
+	for side_value in absorbing_sides:
+		var side := String(side_value)
+		var start := Vector2.ZERO
+		var end := Vector2.ZERO
+		match side:
+			"left":
+				start = Vector2(rect.position.x + 8.0, center.y - half_segment)
+				end = Vector2(rect.position.x + 8.0, center.y + half_segment)
+			"right":
+				start = Vector2(rect.end.x - 8.0, center.y - half_segment)
+				end = Vector2(rect.end.x - 8.0, center.y + half_segment)
+			"top":
+				start = Vector2(center.x - half_segment, rect.position.y + 8.0)
+				end = Vector2(center.x + half_segment, rect.position.y + 8.0)
+			"bottom":
+				start = Vector2(center.x - half_segment, rect.end.y - 8.0)
+				end = Vector2(center.x + half_segment, rect.end.y - 8.0)
+			_:
+				continue
+		draw_line(start, end, VOID_PURPLE, 10.0, true)
+		draw_line(start, end, VOID_DARK, 5.0, true)
 
 
 func _draw_recall_button() -> void:
