@@ -240,18 +240,45 @@ func _add_triangle_block(column: int, row: int, hp: int, orientation: String) ->
 
 func _triangle_local_points(orientation: String) -> PackedVector2Array:
 	# Keep the same top and bottom alignment as squares, while retaining the
-	# slightly narrower optical width that makes triangles feel equally sized.
+	# exact same outer bounds. The visible tip is part of these bounds.
 	var half_width := TRIANGLE_WIDTH * 0.5
 	var half_height := TRIANGLE_HEIGHT * 0.5
-	match orientation:
-		"top_right":
-			return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(half_width, -half_height), Vector2(half_width, half_height)])
-		"bottom_left":
-			return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(-half_width, half_height), Vector2(half_width, half_height)])
-		"bottom_right":
-			return PackedVector2Array([Vector2(half_width, -half_height), Vector2(-half_width, half_height), Vector2(half_width, half_height)])
-		_:
-			return PackedVector2Array([Vector2(-half_width, -half_height), Vector2(half_width, -half_height), Vector2(-half_width, half_height)])
+	var base_points := PackedVector2Array([
+		Vector2(-half_width, -half_height),
+		Vector2(half_width, -half_height),
+		Vector2(-half_width, half_height)
+	])
+	return _orient_triangle_points(base_points, orientation)
+
+
+func _triangle_inner_local_points(orientation: String) -> PackedVector2Array:
+	# Build a mathematically inset right triangle. Drawing a smaller dark
+	# triangle over the solid outer triangle keeps the six-pixel border fully
+	# inside the cell and preserves a sharp outer tip without miter overflow.
+	var half_width := TRIANGLE_WIDTH * 0.5
+	var half_height := TRIANGLE_HEIGHT * 0.5
+	var inset := BLOCK_OUTLINE_WIDTH
+	var acute_inset := inset * (1.0 + sqrt(2.0))
+	var base_points := PackedVector2Array([
+		Vector2(-half_width + inset, -half_height + inset),
+		Vector2(half_width - acute_inset, -half_height + inset),
+		Vector2(-half_width + inset, half_height - acute_inset)
+	])
+	return _orient_triangle_points(base_points, orientation)
+
+
+func _orient_triangle_points(points: PackedVector2Array, orientation: String) -> PackedVector2Array:
+	var flip_x := orientation == "top_right" or orientation == "bottom_right"
+	var flip_y := orientation == "bottom_left" or orientation == "bottom_right"
+	var result := PackedVector2Array()
+	for point in points:
+		var oriented_point := point
+		if flip_x:
+			oriented_point.x = -oriented_point.x
+		if flip_y:
+			oriented_point.y = -oriented_point.y
+		result.append(oriented_point)
+	return result
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -630,8 +657,10 @@ func _draw_blocks() -> void:
 		var hp := str(item["hp"])
 		if item["shape"] == "square":
 			var rect := Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
-			draw_rect(rect, Color(PANEL, 0.72), true)
-			draw_rect(rect, AMBER, false, BLOCK_OUTLINE_WIDTH)
+			# Draw the border as an outer solid shape plus an inset fill. Unlike a
+			# centered stroke, this can never overlap a neighbouring cell.
+			draw_rect(rect, AMBER, true)
+			draw_rect(rect.grow(-BLOCK_OUTLINE_WIDTH), PANEL, true)
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -641,12 +670,12 @@ func _draw_blocks() -> void:
 				centroid += point
 			centroid /= float(local_points.size())
 			label_center = center + centroid
-			draw_colored_polygon(points, Color(PANEL, 0.72))
-			# Draw each edge independently. A closed polyline creates a long miter
-			# spike at the triangle's acute corner, making it look outside its row.
-			draw_line(points[0], points[1], CORAL, BLOCK_OUTLINE_WIDTH, true)
-			draw_line(points[1], points[2], CORAL, BLOCK_OUTLINE_WIDTH, true)
-			draw_line(points[2], points[0], CORAL, BLOCK_OUTLINE_WIDTH, true)
+			var inner_local_points := _triangle_inner_local_points(String(item["orientation"]))
+			var inner_points := PackedVector2Array()
+			for point in inner_local_points:
+				inner_points.append(center + point)
+			draw_colored_polygon(points, CORAL)
+			draw_colored_polygon(inner_points, PANEL)
 		_draw_centered_label(hp, label_center, 24, CREAM)
 
 
