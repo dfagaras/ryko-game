@@ -47,6 +47,9 @@ const REGENERATIVE_BLOCK_START_TURN := 12
 const REGENERATIVE_GROWTH := 1.5
 const BLACK_HOLE_BLOCK_START_TURN := 5
 const PHASE_BLOCK_START_TURN := 8
+const ION_BEAM_START_TURN := 4
+const ION_BEAM_RADIUS := 20.0
+const ION_BEAM_EFFECT_DURATION := 0.30
 
 const BG := Color("#08191c")
 const PLAYFIELD_BG := Color("#0b2225")
@@ -58,6 +61,7 @@ const REGENERATIVE_GREEN := Color("#9ee66f")
 const VOID_PURPLE := Color("#b36cff")
 const VOID_DARK := Color("#020608")
 const PHASE_BLUE := Color("#78a8ff")
+const ION_BLUE := Color("#32d8ff")
 const MUTED := Color("#55777a")
 const CREAM := Color("#f3e7c5")
 
@@ -86,6 +90,8 @@ var row_advance_elapsed := 0.0
 var balls: Array[Dictionary] = []
 var blocks: Array[Dictionary] = []
 var pickups: Array[Dictionary] = []
+var ion_powers: Array[Dictionary] = []
+var ion_beam_effects: Array[Dictionary] = []
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
@@ -157,6 +163,8 @@ func _clear_run_objects() -> void:
 			body.queue_free()
 	balls.clear()
 	pickups.clear()
+	ion_powers.clear()
+	ion_beam_effects.clear()
 
 
 func _cell_center(column: int, row: int) -> Vector2:
@@ -245,6 +253,18 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 		"collected": false
 	})
 
+	# Keep the permanent +1 pickup, then use a second empty cell for Ion Beam
+	# when the generated row has enough room.
+	if block_count + 1 < COLUMN_COUNT and rng.randf() < _ion_beam_spawn_chance():
+		var ion_column := columns[block_count + 1]
+		ion_powers.append({
+			"column": ion_column,
+			"row": row,
+			"position": _cell_center(ion_column, row),
+			"activated": false,
+			"triggered_balls": {}
+		})
+
 
 func _block_count_for_turn() -> int:
 	if turn <= 4:
@@ -294,6 +314,16 @@ func _phase_block_spawn_chance() -> float:
 	if turn <= 29:
 		return 0.26
 	return 0.32
+
+
+func _ion_beam_spawn_chance() -> float:
+	if turn < ION_BEAM_START_TURN:
+		return 0.0
+	if turn <= 9:
+		return 0.28
+	if turn <= 19:
+		return 0.32
+	return 0.36
 
 
 func _choose_black_hole_sides() -> Array[String]:
@@ -557,6 +587,7 @@ func _spawn_volley_ball() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_ion_beam_effects(delta)
 	if state == TurnState.ADVANCING:
 		_process_board_advance(delta)
 		queue_redraw()
@@ -590,6 +621,7 @@ func _physics_process(delta: float) -> void:
 					continue
 
 		_collect_pickups_at(body.position)
+		_activate_ion_powers_at(body)
 		if body.position.y > RETURN_Y + 32.0:
 			_return_ball(entry)
 
@@ -653,6 +685,45 @@ func _collect_pickups_at(ball_position: Vector2) -> void:
 			pending_ball_bonus += 1
 
 
+func _activate_ion_powers_at(ball: CharacterBody2D) -> void:
+	var ball_id := ball.get_instance_id()
+	for power in ion_powers:
+		var power_position: Vector2 = power["position"]
+		if ball.position.distance_to(power_position) > ION_BEAM_RADIUS + BALL_RADIUS:
+			continue
+		var triggered_balls: Dictionary = power["triggered_balls"]
+		if triggered_balls.has(ball_id):
+			continue
+		triggered_balls[ball_id] = true
+		power["activated"] = true
+		_fire_ion_beam(power_position.y)
+
+
+func _fire_ion_beam(beam_y: float) -> void:
+	ion_beam_effects.append({
+		"y": beam_y,
+		"elapsed": 0.0
+	})
+	for item in blocks:
+		var body: StaticBody2D = item["body"] as StaticBody2D
+		if not is_instance_valid(body):
+			continue
+		if String(item.get("variant", "normal")) == "phase" and not bool(item.get("phase_active", true)):
+			continue
+		var block_position: Vector2 = item["position"]
+		if absf(block_position.y - beam_y) <= CELL * 0.5:
+			_hit_block(body)
+
+
+func _update_ion_beam_effects(delta: float) -> void:
+	var active_effects: Array[Dictionary] = []
+	for effect in ion_beam_effects:
+		effect["elapsed"] = float(effect["elapsed"]) + delta
+		if float(effect["elapsed"]) < ION_BEAM_EFFECT_DURATION:
+			active_effects.append(effect)
+	ion_beam_effects = active_effects
+
+
 func _return_ball(entry: Dictionary) -> void:
 	var body: CharacterBody2D = entry["body"] as CharacterBody2D
 	if not first_return_recorded:
@@ -696,6 +767,12 @@ func _begin_board_advance() -> void:
 			remaining_pickups.append(pickup)
 	pickups = remaining_pickups
 
+	var remaining_ion_powers: Array[Dictionary] = []
+	for power in ion_powers:
+		if not bool(power["activated"]):
+			remaining_ion_powers.append(power)
+	ion_powers = remaining_ion_powers
+
 	turn += 1
 	_spawn_row(turn, -1)
 
@@ -712,6 +789,12 @@ func _begin_board_advance() -> void:
 		var pickup_position: Vector2 = pickup["position"]
 		pickup["move_from"] = pickup_position
 		pickup["move_to"] = pickup_position + Vector2(0.0, ROW_STEP)
+
+	for power in ion_powers:
+		power["row"] = int(power["row"]) + 1
+		var power_position: Vector2 = power["position"]
+		power["move_from"] = power_position
+		power["move_to"] = power_position + Vector2(0.0, ROW_STEP)
 
 
 func _toggle_phase_blocks() -> void:
@@ -746,6 +829,11 @@ func _process_board_advance(delta: float) -> void:
 		var move_to: Vector2 = pickup["move_to"]
 		pickup["position"] = move_from.lerp(move_to, eased)
 
+	for power in ion_powers:
+		var move_from: Vector2 = power["move_from"]
+		var move_to: Vector2 = power["move_to"]
+		power["position"] = move_from.lerp(move_to, eased)
+
 	if progress < 1.0:
 		return
 
@@ -768,6 +856,15 @@ func _process_board_advance(delta: float) -> void:
 			visible_pickups.append(pickup)
 	pickups = visible_pickups
 
+	var visible_ion_powers: Array[Dictionary] = []
+	for power in ion_powers:
+		power.erase("move_from")
+		power.erase("move_to")
+		var power_position: Vector2 = power["position"]
+		if power_position.y < LAUNCH_LINE_Y:
+			visible_ion_powers.append(power)
+	ion_powers = visible_ion_powers
+
 	if reached_danger:
 		state = TurnState.GAME_OVER
 		is_aiming = false
@@ -787,6 +884,8 @@ func _draw() -> void:
 	_draw_launch_line()
 	_draw_blocks()
 	_draw_pickups()
+	_draw_ion_powers()
+	_draw_ion_beam_effects()
 
 	if state == TurnState.AIMING:
 		_draw_launcher()
@@ -1000,6 +1099,45 @@ func _draw_pickups() -> void:
 		draw_arc(center, PICKUP_RADIUS, 0.0, TAU, 32, AQUA, 4.0)
 		draw_line(center + Vector2(-8, 0), center + Vector2(8, 0), CREAM, 4.0, true)
 		draw_line(center + Vector2(0, -8), center + Vector2(0, 8), CREAM, 4.0, true)
+
+
+func _draw_ion_powers() -> void:
+	for power in ion_powers:
+		var center: Vector2 = power["position"]
+		var color := CORAL if bool(power["activated"]) else ION_BLUE
+		draw_circle(center, ION_BEAM_RADIUS, Color(PANEL, 0.92))
+		draw_arc(center, ION_BEAM_RADIUS, 0.0, TAU, 32, color, 4.0, true)
+		draw_line(center + Vector2(-12.0, 0.0), center + Vector2(12.0, 0.0), color, 5.0, true)
+		draw_colored_polygon(PackedVector2Array([
+			center + Vector2(-16.0, 0.0),
+			center + Vector2(-8.0, -6.0),
+			center + Vector2(-8.0, 6.0)
+		]), color)
+		draw_colored_polygon(PackedVector2Array([
+			center + Vector2(16.0, 0.0),
+			center + Vector2(8.0, -6.0),
+			center + Vector2(8.0, 6.0)
+		]), color)
+
+
+func _draw_ion_beam_effects() -> void:
+	for effect in ion_beam_effects:
+		var progress := clampf(float(effect["elapsed"]) / ION_BEAM_EFFECT_DURATION, 0.0, 1.0)
+		var pulse := sin(progress * PI)
+		var fade := 1.0 - progress
+		var glow_width := 5.0 + pulse * 17.0
+		var beam_y := float(effect["y"])
+		# Rectangles are clipped by construction to the exact board width.
+		draw_rect(
+			Rect2(Vector2(BOARD_LEFT, beam_y - glow_width * 0.5), Vector2(BOARD_RIGHT - BOARD_LEFT, glow_width)),
+			Color(ION_BLUE, fade * 0.34),
+			true
+		)
+		draw_rect(
+			Rect2(Vector2(BOARD_LEFT, beam_y - 2.0), Vector2(BOARD_RIGHT - BOARD_LEFT, 4.0)),
+			Color(CREAM, fade),
+			true
+		)
 
 
 func _draw_launcher() -> void:
