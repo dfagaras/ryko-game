@@ -3,6 +3,7 @@ extends Node2D
 enum TurnState {
 	AIMING,
 	FIRING,
+	ADVANCING,
 	GAME_OVER
 }
 
@@ -14,8 +15,10 @@ const BOARD_TOP := 176.0
 const RETURN_Y := 1165.0
 const DANGER_Y := 1080.0
 const CELL := 82.0
+const TRIANGLE_SIZE := 78.0
 const GAP := 10.0
 const ROW_STEP := CELL + GAP
+const ROW_DROP_DURATION := 0.46
 const GRID_X := 43.0
 const GRID_Y := 242.0
 const COLUMN_COUNT := 7
@@ -59,6 +62,7 @@ var volley_direction := Vector2(0, -1)
 var launched_ball_count := 0
 var active_ball_count := 0
 var launch_timer := 0.0
+var row_advance_elapsed := 0.0
 
 var balls: Array[Dictionary] = []
 var blocks: Array[Dictionary] = []
@@ -108,6 +112,7 @@ func _start_new_run() -> void:
 	launched_ball_count = 0
 	active_ball_count = 0
 	launch_timer = 0.0
+	row_advance_elapsed = 0.0
 
 	if fixed_generation_seed != 0:
 		run_seed = fixed_generation_seed
@@ -139,25 +144,35 @@ func _cell_center(column: int, row: int) -> Vector2:
 	return Vector2(GRID_X + column * ROW_STEP + CELL * 0.5, GRID_Y + row * ROW_STEP + CELL * 0.5)
 
 
-func _spawn_row(hp: int) -> void:
+func _spawn_row(hp: int, row: int = 0) -> void:
 	var columns := _shuffled_columns()
-	var block_count := rng.randi_range(1, 3)
+	var block_count := _block_count_for_turn()
 
 	for index in range(block_count):
 		var column := columns[index]
 		if turn >= 3 and rng.randf() < TRIANGLE_CHANCE:
 			var orientation: String = TRIANGLE_ORIENTATIONS[rng.randi_range(0, TRIANGLE_ORIENTATIONS.size() - 1)]
-			_add_triangle_block(column, 0, hp, orientation)
+			_add_triangle_block(column, row, hp, orientation)
 		else:
-			_add_square_block(column, 0, hp)
+			_add_square_block(column, row, hp)
 
 	var pickup_column := columns[block_count]
 	pickups.append({
 		"column": pickup_column,
-		"row": 0,
-		"position": _cell_center(pickup_column, 0),
+		"row": row,
+		"position": _cell_center(pickup_column, row),
 		"collected": false
 	})
+
+
+func _block_count_for_turn() -> int:
+	if turn <= 4:
+		return rng.randi_range(1, 3)
+	if turn <= 9:
+		return rng.randi_range(2, 4)
+	if turn <= 19:
+		return rng.randi_range(3, 5)
+	return rng.randi_range(4, 6)
 
 
 func _shuffled_columns() -> Array[int]:
@@ -215,7 +230,7 @@ func _add_triangle_block(column: int, row: int, hp: int, orientation: String) ->
 
 
 func _triangle_local_points(orientation: String) -> PackedVector2Array:
-	var half := CELL * 0.5
+	var half := TRIANGLE_SIZE * 0.5
 	match orientation:
 		"top_right":
 			return PackedVector2Array([Vector2(-half, -half), Vector2(half, -half), Vector2(half, half)])
@@ -329,6 +344,11 @@ func _spawn_volley_ball() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if state == TurnState.ADVANCING:
+		_process_board_advance(delta)
+		queue_redraw()
+		return
+
 	if state != TurnState.FIRING:
 		return
 
@@ -404,41 +424,85 @@ func _finish_volley() -> void:
 	launcher.y = RETURN_Y
 	ball_count += pending_ball_bonus
 	pending_ball_bonus = 0
-	_advance_board()
+	_begin_board_advance()
 
 
-func _advance_board() -> void:
+func _begin_board_advance() -> void:
+	state = TurnState.ADVANCING
+	row_advance_elapsed = 0.0
+
+	var remaining_pickups: Array[Dictionary] = []
+	for pickup in pickups:
+		if not bool(pickup["collected"]):
+			remaining_pickups.append(pickup)
+	pickups = remaining_pickups
+
+	turn += 1
+	_spawn_row(turn, -1)
+
 	for item in blocks:
 		var body: StaticBody2D = item["body"] as StaticBody2D
 		if not is_instance_valid(body):
 			continue
 		item["row"] = int(item["row"]) + 1
-		body.position += Vector2(0.0, ROW_STEP)
-		item["position"] = body.position
-		if body.position.y + CELL * 0.5 >= DANGER_Y:
-			state = TurnState.GAME_OVER
+		item["move_from"] = body.position
+		item["move_to"] = body.position + Vector2(0.0, ROW_STEP)
 
-	var remaining_pickups: Array[Dictionary] = []
 	for pickup in pickups:
-		if bool(pickup["collected"]):
-			continue
 		pickup["row"] = int(pickup["row"]) + 1
 		var pickup_position: Vector2 = pickup["position"]
-		pickup_position += Vector2(0.0, ROW_STEP)
-		pickup["position"] = pickup_position
-		if pickup_position.y < DANGER_Y:
-			remaining_pickups.append(pickup)
-	pickups = remaining_pickups
+		pickup["move_from"] = pickup_position
+		pickup["move_to"] = pickup_position + Vector2(0.0, ROW_STEP)
 
-	if state == TurnState.GAME_OVER:
-		is_aiming = false
-		queue_redraw()
+
+func _process_board_advance(delta: float) -> void:
+	row_advance_elapsed += delta
+	var progress := clampf(row_advance_elapsed / ROW_DROP_DURATION, 0.0, 1.0)
+	# Smoothstep gives the row an elevator-like acceleration and soft stop.
+	var eased := progress * progress * (3.0 - 2.0 * progress)
+
+	for item in blocks:
+		var body: StaticBody2D = item["body"] as StaticBody2D
+		if not is_instance_valid(body):
+			continue
+		var move_from: Vector2 = item["move_from"]
+		var move_to: Vector2 = item["move_to"]
+		body.position = move_from.lerp(move_to, eased)
+		item["position"] = body.position
+
+	for pickup in pickups:
+		var move_from: Vector2 = pickup["move_from"]
+		var move_to: Vector2 = pickup["move_to"]
+		pickup["position"] = move_from.lerp(move_to, eased)
+
+	if progress < 1.0:
 		return
 
-	turn += 1
-	_spawn_row(turn)
+	var reached_danger := false
+	for item in blocks:
+		var body: StaticBody2D = item["body"] as StaticBody2D
+		if not is_instance_valid(body):
+			continue
+		item.erase("move_from")
+		item.erase("move_to")
+		if body.position.y + CELL * 0.5 >= DANGER_Y:
+			reached_danger = true
+
+	var visible_pickups: Array[Dictionary] = []
+	for pickup in pickups:
+		pickup.erase("move_from")
+		pickup.erase("move_to")
+		var pickup_position: Vector2 = pickup["position"]
+		if pickup_position.y < DANGER_Y:
+			visible_pickups.append(pickup)
+	pickups = visible_pickups
+
+	if reached_danger:
+		state = TurnState.GAME_OVER
+		is_aiming = false
+		return
+
 	state = TurnState.AIMING
-	queue_redraw()
 
 
 func _first_aim_hit() -> Vector2:
