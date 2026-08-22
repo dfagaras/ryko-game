@@ -12,8 +12,6 @@ const H := 1280.0
 const BOARD_LEFT := 28.0
 const BOARD_RIGHT := 692.0
 const BOARD_TOP := 176.0
-const RETURN_Y := 1165.0
-const DANGER_Y := 1080.0
 const CELL := 88.0
 const TRIANGLE_WIDTH := CELL
 const TRIANGLE_HEIGHT := CELL
@@ -25,11 +23,16 @@ const ROW_DROP_DURATION := 0.46
 const GRID_X := 40.0
 const GRID_Y := 239.0
 const COLUMN_COUNT := 7
+const LAST_PLAYABLE_BLOCK_ROW := 8
+const LAUNCH_LINE_Y := GRID_Y + LAST_PLAYABLE_BLOCK_ROW * ROW_STEP + CELL
+const RETURN_Y := LAUNCH_LINE_Y
 
 const MIN_PULL_DISTANCE := 14.0
 const MAX_PULL_DISTANCE := 300.0
 const RELEASE_PULL_DISTANCE := 48.0
-const MIN_UPWARD_COMPONENT := 0.045
+# Limit shots to 15 degrees above horizontal, matching the reference feel.
+const MIN_UPWARD_COMPONENT := 0.258819
+const MAX_HORIZONTAL_COMPONENT := 0.965926
 const BALL_SPEED := 760.0
 const BALL_RADIUS := 9.0
 const BALL_COLLISION_RADIUS := 10.0
@@ -74,15 +77,12 @@ var balls: Array[Dictionary] = []
 var blocks: Array[Dictionary] = []
 var pickups: Array[Dictionary] = []
 var fallback_font: Font
-var aim_cast_shape: CircleShape2D
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
 
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
-	aim_cast_shape = CircleShape2D.new()
-	aim_cast_shape.radius = BALL_COLLISION_RADIUS
 	_create_boundaries()
 	_start_new_run()
 
@@ -330,8 +330,7 @@ func _update_drag_aim(pointer: Vector2) -> void:
 
 	var candidate := Vector2(-pull.x, -pull_distance).normalized()
 	if candidate.y > -MIN_UPWARD_COMPONENT:
-		candidate.y = -MIN_UPWARD_COMPONENT
-		candidate = candidate.normalized()
+		candidate = Vector2(signf(candidate.x) * MAX_HORIZONTAL_COMPONENT, -MIN_UPWARD_COMPONENT)
 
 	aim_direction = candidate
 	pull_strength = clamp(
@@ -526,7 +525,7 @@ func _process_board_advance(delta: float) -> void:
 			continue
 		item.erase("move_from")
 		item.erase("move_to")
-		if body.position.y + CELL * 0.5 >= DANGER_Y:
+		if body.position.y + CELL * 0.5 >= LAUNCH_LINE_Y:
 			reached_danger = true
 
 	var visible_pickups: Array[Dictionary] = []
@@ -534,7 +533,7 @@ func _process_board_advance(delta: float) -> void:
 		pickup.erase("move_from")
 		pickup.erase("move_to")
 		var pickup_position: Vector2 = pickup["position"]
-		if pickup_position.y < DANGER_Y:
+		if pickup_position.y < LAUNCH_LINE_Y:
 			visible_pickups.append(pickup)
 	pickups = visible_pickups
 
@@ -546,24 +545,6 @@ func _process_board_advance(delta: float) -> void:
 	state = TurnState.AIMING
 
 
-func _first_aim_hit() -> Vector2:
-	# A ray has zero width and can incorrectly preview a route through diagonal
-	# gaps that the real ball cannot fit through. Sweep the actual ball shape.
-	var cast_start := launcher + aim_direction * 14.0
-	var cast_motion := aim_direction * 1600.0
-	var query := PhysicsShapeQueryParameters2D.new()
-	query.shape = aim_cast_shape
-	query.transform = Transform2D(0.0, cast_start)
-	query.motion = cast_motion
-	query.collision_mask = 1
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	var fractions := get_world_2d().direct_space_state.cast_motion(query)
-	if fractions.size() >= 1:
-		return cast_start + cast_motion * fractions[0]
-	return cast_start + cast_motion
-
-
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), BG)
 	_draw_playfield()
@@ -572,7 +553,7 @@ func _draw() -> void:
 
 	_draw_signal_details()
 	_draw_header()
-	_draw_danger_line()
+	_draw_launch_line()
 	_draw_blocks()
 	_draw_pickups()
 
@@ -587,7 +568,7 @@ func _draw() -> void:
 
 
 func _draw_playfield() -> void:
-	var playfield_bottom := RETURN_Y + 32.0
+	var playfield_bottom := LAUNCH_LINE_Y
 	var playfield_rect := Rect2(
 		Vector2(BOARD_LEFT, BOARD_TOP),
 		Vector2(BOARD_RIGHT - BOARD_LEFT, playfield_bottom - BOARD_TOP)
@@ -597,6 +578,13 @@ func _draw_playfield() -> void:
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), wall_color, 3.0, true)
 	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), wall_color, 3.0, true)
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_RIGHT, BOARD_TOP), wall_color, 3.0, true)
+	# A separate lower area keeps the launch origin visually distinct from the
+	# descending block field. This can later be replaced by the final art.
+	draw_rect(
+		Rect2(Vector2(BOARD_LEFT, LAUNCH_LINE_Y), Vector2(BOARD_RIGHT - BOARD_LEFT, H - LAUNCH_LINE_Y)),
+		Color(PANEL, 0.55),
+		true
+	)
 
 
 func _draw_active_balls() -> void:
@@ -612,18 +600,17 @@ func _draw_active_balls() -> void:
 
 func _draw_aim_guide() -> void:
 	var start := launcher + aim_direction * 56.0
-	var hit := _first_aim_hit()
-	var available_length := maxf(0.0, start.distance_to(hit) - 5.0)
-	var desired_length := lerpf(38.0, 980.0, pow(pull_strength, 0.78))
-	var guide_length := minf(available_length, desired_length)
+	# The guide is intentionally visual-only: it passes over blocks exactly like
+	# the reference game, while the launched ball still uses real collisions.
+	var guide_length := lerpf(38.0, 980.0, pow(pull_strength, 0.78))
 	var dot_radius := lerpf(1.4, 5.2, pull_strength)
 	var dot_spacing := lerpf(10.0, 22.0, pull_strength)
-	var distance := 0.0
+	var segment_count := maxi(1, int(round(guide_length / dot_spacing)))
 
-	while distance <= guide_length:
+	for index in range(segment_count + 1):
+		var distance := guide_length * float(index) / float(segment_count)
 		var fade := lerpf(0.96, 0.62, distance / maxf(guide_length, 1.0))
 		draw_circle(start + aim_direction * distance, dot_radius, Color(AQUA, fade))
-		distance += dot_spacing
 
 
 func _draw_header() -> void:
@@ -642,9 +629,14 @@ func _draw_signal_details() -> void:
 		draw_circle(p, 2.0, Color(MUTED, 0.55))
 
 
-func _draw_danger_line() -> void:
-	draw_dashed_line(Vector2(BOARD_LEFT + 8, DANGER_Y), Vector2(BOARD_RIGHT - 8, DANGER_Y), Color(CORAL, 0.55), 2.0, 10.0)
-	draw_string(fallback_font, Vector2(32, DANGER_Y - 14), "LIMIT", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CORAL, 0.7))
+func _draw_launch_line() -> void:
+	draw_line(
+		Vector2(BOARD_LEFT, LAUNCH_LINE_Y),
+		Vector2(BOARD_RIGHT, LAUNCH_LINE_Y),
+		Color(CREAM, 0.72),
+		3.0,
+		true
+	)
 
 
 func _draw_blocks() -> void:
