@@ -43,6 +43,8 @@ const TRIANGLE_ORIENTATIONS := ["top_left", "top_right", "bottom_left", "bottom_
 const BLOCK_OUTLINE_WIDTH := 6.0
 const DENSE_BLOCK_START_TURN := 10
 const DENSE_BLOCK_MULTIPLIER := 2
+const REGENERATIVE_BLOCK_START_TURN := 12
+const REGENERATIVE_GROWTH := 1.5
 
 const BG := Color("#08191c")
 const PLAYFIELD_BG := Color("#0b2225")
@@ -50,6 +52,7 @@ const PANEL := Color("#0d262a")
 const AMBER := Color("#ffb84a")
 const AQUA := Color("#56e0d2")
 const CORAL := Color("#ff6b5f")
+const REGENERATIVE_GREEN := Color("#9ee66f")
 const MUTED := Color("#55777a")
 const CREAM := Color("#f3e7c5")
 
@@ -179,14 +182,27 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	if not square_indices.is_empty() and rng.randf() < _dense_block_spawn_chance():
 		dense_index = square_indices[rng.randi_range(0, square_indices.size() - 1)]
 
+	# Regenerative blocks can use either base shape, but never replace the dense
+	# square selected above. Limit them to one per row while we tune difficulty.
+	var regenerative_index := -1
+	var regenerative_candidates: Array[int] = []
+	for index in range(block_count):
+		if index != dense_index:
+			regenerative_candidates.append(index)
+	if not regenerative_candidates.is_empty() and rng.randf() < _regenerative_block_spawn_chance():
+		regenerative_index = regenerative_candidates[rng.randi_range(0, regenerative_candidates.size() - 1)]
+
 	for index in range(block_count):
 		var column := columns[index]
+		var variant := "regenerative" if index == regenerative_index else "normal"
 		if row_shapes[index] == "triangle":
-			_add_triangle_block(column, row, hp, row_orientations[index])
+			_add_triangle_block(column, row, hp, row_orientations[index], variant)
 		else:
 			var is_dense := index == dense_index
 			var square_hp := hp * DENSE_BLOCK_MULTIPLIER if is_dense else hp
-			_add_square_block(column, row, square_hp, is_dense)
+			if is_dense:
+				variant = "dense"
+			_add_square_block(column, row, square_hp, variant)
 
 	var pickup_column := columns[block_count]
 	pickups.append({
@@ -217,6 +233,16 @@ func _dense_block_spawn_chance() -> float:
 	return 0.38
 
 
+func _regenerative_block_spawn_chance() -> float:
+	if turn < REGENERATIVE_BLOCK_START_TURN:
+		return 0.0
+	if turn <= 19:
+		return 0.18
+	if turn <= 29:
+		return 0.24
+	return 0.30
+
+
 func _shuffled_columns() -> Array[int]:
 	var result: Array[int] = []
 	for column in range(COLUMN_COUNT):
@@ -229,7 +255,7 @@ func _shuffled_columns() -> Array[int]:
 	return result
 
 
-func _add_square_block(column: int, row: int, hp: int, is_dense: bool = false) -> void:
+func _add_square_block(column: int, row: int, hp: int, variant: String = "normal") -> void:
 	var body := StaticBody2D.new()
 	body.position = _cell_center(column, row)
 	body.set_meta("kind", "block")
@@ -243,8 +269,8 @@ func _add_square_block(column: int, row: int, hp: int, is_dense: bool = false) -
 	blocks.append({
 		"body": body,
 		"shape": "square",
-		"variant": "dense" if is_dense else "normal",
-		"hp_multiplier": DENSE_BLOCK_MULTIPLIER if is_dense else 1,
+		"variant": variant,
+		"hp_multiplier": DENSE_BLOCK_MULTIPLIER if variant == "dense" else 1,
 		"hp": hp,
 		"position": body.position,
 		"column": column,
@@ -253,7 +279,7 @@ func _add_square_block(column: int, row: int, hp: int, is_dense: bool = false) -
 	})
 
 
-func _add_triangle_block(column: int, row: int, hp: int, orientation: String) -> void:
+func _add_triangle_block(column: int, row: int, hp: int, orientation: String, variant: String = "normal") -> void:
 	var body := StaticBody2D.new()
 	body.position = _cell_center(column, row)
 	body.set_meta("kind", "block")
@@ -265,7 +291,7 @@ func _add_triangle_block(column: int, row: int, hp: int, orientation: String) ->
 	blocks.append({
 		"body": body,
 		"shape": "triangle",
-		"variant": "normal",
+		"variant": variant,
 		"hp_multiplier": 1,
 		"hp": hp,
 		"position": body.position,
@@ -324,6 +350,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_start_new_run()
 		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			_start_new_run()
+		return
+
+	if state == TurnState.FIRING:
+		if event is InputEventScreenTouch and event.pressed and _recall_button_rect().has_point(event.position):
+			_recall_volley()
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _recall_button_rect().has_point(event.position):
+			_recall_volley()
 		return
 
 	if state != TurnState.AIMING:
@@ -395,6 +428,38 @@ func _launch_volley() -> void:
 	first_return_recorded = false
 	next_launcher_x = launcher.x
 	balls.clear()
+	queue_redraw()
+
+
+func _recall_button_rect() -> Rect2:
+	return Rect2(Vector2(W - 158.0, H - 92.0), Vector2(130.0, 58.0))
+
+
+func _recall_volley() -> void:
+	if state != TurnState.FIRING:
+		return
+
+	# If no ball has returned naturally, recalling keeps the existing launcher
+	# position. Otherwise, the first natural return remains authoritative.
+	if not first_return_recorded:
+		next_launcher_x = launcher.x
+		first_return_recorded = true
+
+	# Cancel balls that were still waiting in the launch queue and safely remove
+	# every active ball before advancing the board.
+	launched_ball_count = ball_count
+	for entry in balls:
+		if bool(entry["returned"]):
+			continue
+		entry["returned"] = true
+		var body: CharacterBody2D = entry["body"] as CharacterBody2D
+		if is_instance_valid(body):
+			body.collision_layer = 0
+			body.queue_free()
+		entry["body"] = null
+	active_ball_count = 0
+	_finish_volley()
+	queue_redraw()
 
 
 func _spawn_volley_ball() -> void:
@@ -496,12 +561,24 @@ func _return_ball(entry: Dictionary) -> void:
 
 
 func _finish_volley() -> void:
+	_regenerate_surviving_blocks()
 	balls.clear()
 	launcher.x = next_launcher_x
 	launcher.y = RETURN_Y
 	ball_count += pending_ball_bonus
 	pending_ball_bonus = 0
 	_begin_board_advance()
+
+
+func _regenerate_surviving_blocks() -> void:
+	for item in blocks:
+		if String(item.get("variant", "normal")) != "regenerative":
+			continue
+		var body: StaticBody2D = item["body"] as StaticBody2D
+		if not is_instance_valid(body):
+			continue
+		var current_hp := int(item["hp"])
+		item["hp"] = int(floor(float(current_hp) * REGENERATIVE_GROWTH))
 
 
 func _begin_board_advance() -> void:
@@ -600,6 +677,8 @@ func _draw() -> void:
 			_draw_aim_guide()
 
 	_draw_active_balls()
+	if state == TurnState.FIRING:
+		_draw_recall_button()
 	if state == TurnState.GAME_OVER:
 		_draw_game_over()
 
@@ -684,17 +763,27 @@ func _draw_blocks() -> void:
 		var center: Vector2 = item["position"]
 		var label_center := center
 		var hp := str(item["hp"])
+		var variant := String(item.get("variant", "normal"))
+		var is_regenerative := variant == "regenerative"
 		if item["shape"] == "square":
 			var rect := Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
-			var is_dense := String(item.get("variant", "normal")) == "dense"
+			var is_dense := variant == "dense"
+			var border_color := AMBER
+			if is_dense:
+				border_color = AQUA
+			elif is_regenerative:
+				border_color = REGENERATIVE_GREEN
 			# Draw the border as an outer solid shape plus an inset fill. Unlike a
 			# centered stroke, this can never overlap a neighbouring cell.
-			draw_rect(rect, AQUA if is_dense else AMBER, true)
+			draw_rect(rect, border_color, true)
 			draw_rect(rect.grow(-BLOCK_OUTLINE_WIDTH), PANEL, true)
 			if is_dense:
 				var inner_border := rect.grow(-(BLOCK_OUTLINE_WIDTH + 7.0))
 				draw_rect(inner_border, AQUA, false, 3.0, true)
 				_draw_centered_label("x2", center + Vector2(0.0, -28.0), 13, CORAL)
+				label_center.y += 7.0
+			elif is_regenerative:
+				_draw_centered_label("R", center + Vector2(0.0, -28.0), 13, REGENERATIVE_GREEN)
 				label_center.y += 7.0
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
@@ -709,9 +798,27 @@ func _draw_blocks() -> void:
 			var inner_points := PackedVector2Array()
 			for point in inner_local_points:
 				inner_points.append(center + point)
-			draw_colored_polygon(points, CORAL)
+			draw_colored_polygon(points, REGENERATIVE_GREEN if is_regenerative else CORAL)
 			draw_colored_polygon(inner_points, PANEL)
+			if is_regenerative:
+				_draw_centered_label("R", label_center + Vector2(0.0, -24.0), 13, REGENERATIVE_GREEN)
+				label_center.y += 7.0
 		_draw_centered_label(hp, label_center, 24, CREAM)
+
+
+func _draw_recall_button() -> void:
+	var rect := _recall_button_rect()
+	draw_rect(rect, Color(PANEL, 0.96), true)
+	draw_rect(rect, AQUA, false, 3.0, true)
+	var icon_center := Vector2(rect.position.x + 25.0, rect.get_center().y)
+	draw_arc(icon_center, 11.0, -PI * 0.65, PI * 0.75, 20, AQUA, 3.0, true)
+	var arrow_tip := icon_center + Vector2(-10.0, -7.0)
+	draw_colored_polygon(PackedVector2Array([
+		arrow_tip,
+		arrow_tip + Vector2(10.0, -2.0),
+		arrow_tip + Vector2(4.0, 8.0)
+	]), AQUA)
+	_draw_centered_label("RECALL", Vector2(rect.position.x + 85.0, rect.get_center().y), 16, CREAM)
 
 
 func _draw_centered_label(text: String, center: Vector2, font_size: int, color: Color) -> void:
