@@ -70,7 +70,7 @@ const BACKGROUND_NAMES := [
 	"MISSION LOG",
 	"COSMIC BLUEPRINT",
 	"ALIEN DOODLES",
-	"DEEP-SPACE MAP",
+	"PAPER NEBULA",
 	"SIGNAL NAVIGATION"
 ]
 
@@ -105,6 +105,14 @@ const ICON_POWER_PLUS_ONE: Texture2D = preload("res://assets/icons/power_plus_on
 const ICON_POWER_ION: Texture2D = preload("res://assets/icons/power_ion.png")
 const ICON_POWER_GHOST: Texture2D = preload("res://assets/icons/power_ghost.png")
 const ICON_POWER_SUPERNOVA: Texture2D = preload("res://assets/icons/power_supernova.png")
+const BACKGROUND_TEXTURES: Array[Texture2D] = [
+	preload("res://assets/backgrounds/star_chart.jpg"),
+	preload("res://assets/backgrounds/mission_log.jpg"),
+	preload("res://assets/backgrounds/cosmic_blueprint.jpg"),
+	preload("res://assets/backgrounds/alien_doodles.jpg"),
+	preload("res://assets/backgrounds/paper_nebula.jpg"),
+	preload("res://assets/backgrounds/signal_navigation.jpg")
+]
 
 @export var fixed_generation_seed: int = 0
 
@@ -557,21 +565,21 @@ func _menu_button_rect() -> Rect2:
 
 
 func _menu_theme_rect(index: int) -> Rect2:
-	var column := index % 3
-	var row := index / 3
-	return Rect2(Vector2(48.0 + column * 208.0, 150.0 + row * 122.0), Vector2(192.0, 102.0))
+	var column := index % 2
+	var row := index / 2
+	return Rect2(Vector2(48.0 + column * 330.0, 145.0 + row * 170.0), Vector2(294.0, 150.0))
 
 
 func _menu_restart_rect() -> Rect2:
-	return Rect2(Vector2(48.0, 420.0), Vector2(192.0, 64.0))
+	return Rect2(Vector2(48.0, 675.0), Vector2(192.0, 64.0))
 
 
 func _menu_legend_rect() -> Rect2:
-	return Rect2(Vector2(264.0, 420.0), Vector2(192.0, 64.0))
+	return Rect2(Vector2(264.0, 675.0), Vector2(192.0, 64.0))
 
 
 func _menu_resume_rect() -> Rect2:
-	return Rect2(Vector2(480.0, 420.0), Vector2(192.0, 64.0))
+	return Rect2(Vector2(480.0, 675.0), Vector2(192.0, 64.0))
 
 
 func _legend_back_rect() -> Rect2:
@@ -1400,19 +1408,20 @@ func _draw_paper_texture(area: Rect2, color: Color, sample_count: int) -> void:
 
 
 func _draw_selected_background(area: Rect2) -> void:
-	match selected_background:
-		0:
-			_draw_star_chart_background(area)
-		1:
-			_draw_mission_log_background(area)
-		2:
-			_draw_blueprint_background(area)
-		3:
-			_draw_alien_doodle_background(area)
-		4:
-			_draw_deep_space_background(area)
-		5:
-			_draw_signal_navigation_background(area)
+	if selected_background < 0 or selected_background >= BACKGROUND_TEXTURES.size():
+		return
+	var texture_alpha := 0.82
+	if selected_background == 4:
+		# The paper nebula is deliberately vivid, so soften it slightly to keep
+		# cream HP labels and the dotted trajectory readable over every cloud.
+		texture_alpha = 0.70
+	draw_texture_rect(
+		BACKGROUND_TEXTURES[selected_background],
+		area,
+		false,
+		Color(1.0, 1.0, 1.0, texture_alpha)
+	)
+	draw_rect(area, Color(BG, 0.10 if selected_background != 4 else 0.16), true)
 
 
 func _draw_constellation(points: PackedVector2Array, color: Color) -> void:
@@ -1807,7 +1816,7 @@ func _draw_menu_overlay() -> void:
 	_draw_menu_action_button(_menu_restart_rect(), "RESTART", CORAL)
 	_draw_menu_action_button(_menu_legend_rect(), "LEGEND", AMBER)
 	_draw_menu_action_button(_menu_resume_rect(), "RESUME", AQUA)
-	_draw_centered_label("BACKGROUND SELECTION IS SAVED ON THIS DEVICE", Vector2(W * 0.5, 525.0), 11, Color(CREAM, 0.48))
+	_draw_centered_label("TAP A PREVIEW TO SELECT • SAVED ON THIS DEVICE", Vector2(W * 0.5, 775.0), 11, Color(CREAM, 0.54))
 	_draw_menu_mission_notes()
 
 
@@ -1816,38 +1825,13 @@ func _draw_theme_card(index: int) -> void:
 	var selected := index == selected_background
 	draw_rect(rect, Color(PLAYFIELD_BG, 0.96), true)
 	draw_rect(rect, AQUA if selected else Color(CREAM, 0.48), false, 4.0 if selected else 2.0, true)
-	var icon_center := Vector2(rect.get_center().x, rect.position.y + 37.0)
-	var subtle := Color(CREAM, 0.42)
-	match index:
-		0:
-			_draw_constellation(PackedVector2Array([
-				icon_center + Vector2(-35, 9), icon_center + Vector2(-16, -12), icon_center + Vector2(5, 6), icon_center + Vector2(30, -9)
-			]), Color(AMBER, 0.58))
-		1:
-			for line_index in range(3):
-				draw_line(icon_center + Vector2(-35, -12 + line_index * 11), icon_center + Vector2(18, -12 + line_index * 11), subtle, 2.0, true)
-			draw_arc(icon_center + Vector2(31, 0), 13.0, 0.0, TAU, 20, Color(AMBER, 0.52), 2.0, true)
-		2:
-			draw_arc(icon_center, 29.0, 0.0, TAU, 28, Color(AQUA, 0.62), 2.0, true)
-			draw_arc(icon_center, 17.0, 0.0, TAU, 24, Color(AQUA, 0.45), 1.5, true)
-			draw_line(icon_center + Vector2(-38, 0), icon_center + Vector2(38, 0), Color(AQUA, 0.52), 1.5, true)
-		3:
-			draw_colored_polygon(PackedVector2Array([
-				icon_center + Vector2(0, -24), icon_center + Vector2(25, 18), icon_center + Vector2(-25, 18)
-			]), Color(PHASE_BLUE, 0.62))
-			draw_circle(icon_center + Vector2(-8, 3), 4.0, CREAM)
-			draw_circle(icon_center + Vector2(8, 3), 4.0, CREAM)
-		4:
-			for blob_index in range(5):
-				var blob_center := icon_center + Vector2(-28 + blob_index * 14, -10 + (blob_index % 2) * 17)
-				draw_circle(blob_center, 18.0, Color(AQUA if blob_index % 2 == 0 else PHASE_BLUE, 0.22))
-		5:
-			var wave := PackedVector2Array([
-				icon_center + Vector2(-38, 0), icon_center + Vector2(-22, 0), icon_center + Vector2(-14, -17),
-				icon_center + Vector2(-4, 18), icon_center + Vector2(8, -10), icon_center + Vector2(20, 5), icon_center + Vector2(38, 0)
-			])
-			draw_polyline(wave, Color(AQUA, 0.68), 2.5, true)
-	_draw_centered_label("%02d  %s" % [index + 1, BACKGROUND_NAMES[index]], Vector2(rect.get_center().x, rect.end.y - 22.0), 12, CREAM)
+	var preview_rect := Rect2(rect.position + Vector2(12.0, 10.0), Vector2(86.0, 130.0))
+	draw_texture_rect(BACKGROUND_TEXTURES[index], preview_rect, false, Color(1.0, 1.0, 1.0, 0.96))
+	draw_rect(preview_rect, Color(CREAM, 0.36), false, 1.5, true)
+	var label_center_x := rect.position.x + 195.0
+	_draw_centered_label("%02d" % [index + 1], Vector2(label_center_x, rect.position.y + 45.0), 18, AMBER)
+	_draw_centered_label(BACKGROUND_NAMES[index], Vector2(label_center_x, rect.position.y + 78.0), 12, CREAM)
+	_draw_centered_label("SELECTED" if selected else "TAP TO SELECT", Vector2(label_center_x, rect.position.y + 112.0), 10, AQUA if selected else Color(CREAM, 0.48))
 
 
 func _draw_menu_action_button(rect: Rect2, label: String, accent: Color) -> void:
@@ -1858,15 +1842,15 @@ func _draw_menu_action_button(rect: Rect2, label: String, accent: Color) -> void
 
 func _draw_menu_mission_notes() -> void:
 	var ink := Color(CREAM, 0.11)
-	draw_string(fallback_font, Vector2(58, 610), "MISSION CONTROL NOTES", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(AMBER, 0.54))
-	for line_index in range(7):
-		var y := 646.0 + line_index * 56.0
+	draw_string(fallback_font, Vector2(58, 855), "MISSION CONTROL NOTES", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(AMBER, 0.54))
+	for line_index in range(5):
+		var y := 891.0 + line_index * 56.0
 		draw_line(Vector2(58, y), Vector2(W - 58, y), ink, 1.0, true)
-	draw_string(fallback_font, Vector2(70, 680), "KEEP THE TRAJECTORY SIMPLE.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.26))
-	draw_string(fallback_font, Vector2(70, 736), "SPECIAL BLOCKS ARE SOLID SIGNALS.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.22))
-	draw_string(fallback_font, Vector2(70, 792), "NORMAL SHAPES KEEP THE PAPER VISIBLE.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.18))
-	_draw_doodle_planet(Vector2(580, 932), 48.0, Color(AQUA, 0.17))
-	_draw_doodle_star(Vector2(112, 978), 18.0, Color(AMBER, 0.18))
+	draw_string(fallback_font, Vector2(70, 925), "KEEP THE TRAJECTORY SIMPLE.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.26))
+	draw_string(fallback_font, Vector2(70, 981), "SPECIAL BLOCKS ARE SOLID SIGNALS.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.22))
+	draw_string(fallback_font, Vector2(70, 1037), "NORMAL SHAPES KEEP THE PAPER VISIBLE.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.18))
+	_draw_doodle_planet(Vector2(580, 1120), 42.0, Color(AQUA, 0.14))
+	_draw_doodle_star(Vector2(112, 1150), 16.0, Color(AMBER, 0.16))
 
 
 func _draw_legend_page() -> void:
