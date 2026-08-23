@@ -64,6 +64,8 @@ const SUPERNOVA_BALL_RATIO := 0.20
 const SUPERNOVA_EXPLOSION_RADIUS := CELL * 0.75
 const SUPERNOVA_EFFECT_DURATION := 0.36
 const BLOCK_HIT_FLASH_DURATION := 0.12
+const RADIO_CLEAR_DURATION := 0.92
+const RADIO_SAMPLE_RATE := 22050
 const SETTINGS_PATH := "user://ryko_settings.cfg"
 const BACKGROUND_NAMES := [
 	"STAR CHART",
@@ -151,6 +153,11 @@ var supernova_charged_count := 0
 var menu_open := false
 var menu_page := 0
 var selected_background := 0
+var radio_hit_energy := 0.0
+var radio_phase := 0.0
+var radio_clear_elapsed := RADIO_CLEAR_DURATION
+var field_clear_triggered := false
+var radio_audio_player: AudioStreamPlayer
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
@@ -158,9 +165,81 @@ var run_seed := 0
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
+	_create_radio_audio()
 	_load_settings()
 	_create_boundaries()
 	_start_new_run()
+
+
+func _create_radio_audio() -> void:
+	radio_audio_player = AudioStreamPlayer.new()
+	radio_audio_player.name = "RykoRadio"
+	radio_audio_player.volume_db = -8.0
+	radio_audio_player.stream = _build_happy_radio_chirp()
+	add_child(radio_audio_player)
+
+
+func _build_happy_radio_chirp() -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = RADIO_SAMPLE_RATE
+	stream.stereo = false
+	stream.loop_mode = AudioStreamWAV.LOOP_DISABLED
+	var sample_count := int(RADIO_CLEAR_DURATION * RADIO_SAMPLE_RATE)
+	var data := PackedByteArray()
+	data.resize(sample_count * 2)
+	for sample_index in range(sample_count):
+		var time := float(sample_index) / float(RADIO_SAMPLE_RATE)
+		var sample := clampf(_happy_radio_sample(time), -0.92, 0.92)
+		data.encode_s16(sample_index * 2, int(sample * 32767.0))
+	stream.data = data
+	return stream
+
+
+func _happy_radio_sample(time: float) -> float:
+	if time < 0.0 or time >= RADIO_CLEAR_DURATION:
+		return 0.0
+	var step_length := 0.115
+	var step := mini(6, int(time / step_length))
+	var local_time := fposmod(time, step_length)
+	var frequencies := [430.0, 610.0, 790.0, 560.0, 880.0, 1040.0, 720.0]
+	var envelope := sin(clampf(local_time / step_length, 0.0, 1.0) * PI)
+	var fade_out := clampf((RADIO_CLEAR_DURATION - time) / 0.18, 0.0, 1.0)
+	var phase := TAU * float(frequencies[step]) * time
+	# A soft square-wave overtone gives Ryko a strange radio voice without
+	# imitating an existing film character sound.
+	var carrier := sin(phase) * 0.72 + signf(sin(phase * 0.5)) * 0.16
+	return carrier * envelope * fade_out
+
+
+func _update_radio(delta: float) -> void:
+	radio_phase = fposmod(radio_phase + delta, TAU)
+	radio_hit_energy = move_toward(radio_hit_energy, 0.0, delta * 1.65)
+	radio_clear_elapsed = minf(RADIO_CLEAR_DURATION, radio_clear_elapsed + delta)
+
+
+func _pulse_radio(amount: float = 0.3) -> void:
+	radio_hit_energy = minf(1.6, radio_hit_energy + amount)
+
+
+func _live_block_count() -> int:
+	var count := 0
+	for item in blocks:
+		var body: StaticBody2D = item.get("body") as StaticBody2D
+		if is_instance_valid(body) and int(item.get("hp", 0)) > 0:
+			count += 1
+	return count
+
+
+func _trigger_field_clear() -> void:
+	if field_clear_triggered:
+		return
+	field_clear_triggered = true
+	radio_clear_elapsed = 0.0
+	radio_hit_energy = 1.6
+	if is_instance_valid(radio_audio_player):
+		radio_audio_player.stop()
+		radio_audio_player.play()
 
 
 func _load_settings() -> void:
@@ -212,6 +291,9 @@ func _start_new_run() -> void:
 	active_ball_count = 0
 	launch_timer = 0.0
 	row_advance_elapsed = 0.0
+	radio_hit_energy = 0.0
+	radio_clear_elapsed = RADIO_CLEAR_DURATION
+	field_clear_triggered = false
 
 	if fixed_generation_seed != 0:
 		run_seed = fixed_generation_seed
@@ -564,7 +646,7 @@ func _orient_triangle_points(points: PackedVector2Array, orientation: String) ->
 
 
 func _menu_button_rect() -> Rect2:
-	return Rect2(Vector2(28.0, H - 90.0), Vector2(132.0, 58.0))
+	return Rect2(Vector2(34.0, 1120.0), Vector2(112.0, 132.0))
 
 
 func _menu_theme_rect(display_slot: int) -> Rect2:
@@ -670,6 +752,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_recall_volley()
 		return
 
+	# The radio console is deliberately outside the aiming surface. Its right
+	# control is reserved for a future feature and must not accidentally shoot.
+	if pressed_position.y >= 1110.0:
+		return
+
 	if state != TurnState.AIMING:
 		return
 
@@ -738,13 +825,14 @@ func _launch_volley() -> void:
 	launch_timer = 0.0
 	first_return_recorded = false
 	supernova_charged_count = 0
+	field_clear_triggered = false
 	next_launcher_x = launcher.x
 	balls.clear()
 	queue_redraw()
 
 
 func _recall_button_rect() -> Rect2:
-	return Rect2(Vector2(W - 158.0, H - 92.0), Vector2(130.0, 58.0))
+	return Rect2(Vector2(574.0, 1120.0), Vector2(112.0, 132.0))
 
 
 func _recall_volley() -> void:
@@ -801,6 +889,8 @@ func _spawn_volley_ball() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_radio(delta)
+	queue_redraw()
 	if menu_open:
 		return
 	_update_ion_beam_effects(delta)
@@ -870,12 +960,15 @@ func _hit_block(body: StaticBody2D) -> void:
 	var block_body: StaticBody2D = item["body"] as StaticBody2D
 	if not is_instance_valid(block_body):
 		return
+	_pulse_radio(0.28)
 	item["hit_flash"] = BLOCK_HIT_FLASH_DURATION
 	item["hp"] = int(item["hp"]) - 1
 	if int(item["hp"]) <= 0:
 		block_body.collision_layer = 0
 		block_body.queue_free()
 		item["body"] = null
+		if _live_block_count() == 0:
+			_trigger_field_clear()
 
 
 func _block_position_from_body(body: StaticBody2D) -> Vector2:
@@ -1362,12 +1455,6 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), BG)
 	_draw_paper_texture(Rect2(Vector2.ZERO, Vector2(W, H)), Color(PAPER_FIBER, 0.055), 96)
 	_draw_playfield()
-	draw_rect(Rect2(18.0, 16.0, W - 36.0, 138.0), Color(PANEL, 0.97), true)
-	draw_rect(Rect2(18.0, 16.0, W - 36.0, 138.0), Color(CREAM, 0.72), false, 3.0, true)
-	draw_line(Vector2(34.0, 126.0), Vector2(W - 34.0, 126.0), Color(MUTED, 0.58), 1.0, true)
-
-	_draw_signal_details()
-	_draw_cosmic_doodles()
 	_draw_header()
 	_draw_launch_line()
 	_draw_blocks()
@@ -1384,13 +1471,10 @@ func _draw() -> void:
 			_draw_aim_guide()
 
 	_draw_active_balls()
-	if state == TurnState.FIRING:
-		_draw_recall_button()
+	_draw_footer()
 	if state == TurnState.GAME_OVER:
 		_draw_game_over()
-	if not menu_open:
-		_draw_menu_button()
-	else:
+	if menu_open:
 		_draw_menu_overlay()
 
 
@@ -1410,13 +1494,9 @@ func _draw_playfield() -> void:
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), wall_color, 3.0, true)
 	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), wall_color, 3.0, true)
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_RIGHT, BOARD_TOP), wall_color, 3.0, true)
-	# The launch bay remains on the same night-paper page, separated only by the
-	# physical start line instead of a second black panel.
-	draw_rect(
-		Rect2(Vector2(BOARD_LEFT, LAUNCH_LINE_Y), Vector2(BOARD_RIGHT - BOARD_LEFT, H - LAUNCH_LINE_Y)),
-		Color(PLAYFIELD_BG, 0.78),
-		true
-	)
+	# Close the game page visually at the launch line. The footer is a separate
+	# physical radio console and does not change any gameplay coordinates.
+	draw_line(Vector2(BOARD_LEFT, playfield_bottom), Vector2(BOARD_RIGHT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
 
 
 func _draw_paper_texture(area: Rect2, color: Color, sample_count: int) -> void:
@@ -1649,13 +1729,16 @@ func _distance_to_board_edge(origin: Vector2, direction: Vector2) -> float:
 
 
 func _draw_header() -> void:
-	draw_string(fallback_font, Vector2(38.0, 48.0), "ROUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(CREAM, 0.66))
-	draw_string(fallback_font, Vector2(38.0, 91.0), "%02d" % turn, HORIZONTAL_ALIGNMENT_LEFT, -1, 32, AMBER)
-	_draw_centered_label("NIGHT SKY PAPER", Vector2(W * 0.5, 50.0), 18, CREAM)
-	_draw_centered_label("RYKO // ENDLESS LOG", Vector2(W * 0.5, 88.0), 13, Color(AQUA, 0.86))
-	draw_string(fallback_font, Vector2(W - 142.0, 48.0), "BALLS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(CREAM, 0.66))
-	draw_string(fallback_font, Vector2(W - 142.0, 91.0), "%02d" % ball_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 32, CORAL)
-	_draw_centered_label("COSMIC NOTE // %04d" % (run_seed % 10000), Vector2(W * 0.5, 139.0), 11, Color(CREAM, 0.46))
+	var rect := Rect2(BOARD_LEFT, 18.0, BOARD_RIGHT - BOARD_LEFT, 136.0)
+	_draw_panel_frame(rect, Color(PANEL, 0.985), Color(CREAM, 0.78), 3.0)
+	draw_line(Vector2(rect.position.x + 16.0, 126.0), Vector2(rect.end.x - 16.0, 126.0), Color(MUTED, 0.52), 1.0, true)
+	draw_string(fallback_font, Vector2(48.0, 50.0), "ROUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(CREAM, 0.62))
+	_draw_alien_number(str(turn), Vector2(89.0, 88.0), 38.0, AMBER, 3.4)
+	_draw_centered_label("RYKO", Vector2(W * 0.5, 51.0), 25, CREAM)
+	_draw_centered_label("ENDLESS // SECTOR %02d" % maxi(1, int(ceil(float(turn) / 10.0))), Vector2(W * 0.5, 87.0), 12, Color(AQUA, 0.88))
+	draw_string(fallback_font, Vector2(W - 132.0, 50.0), "BALLS", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(CREAM, 0.62))
+	_draw_alien_number(str(ball_count), Vector2(W - 86.0, 88.0), 38.0, CORAL, 3.4)
+	_draw_centered_label("COSMIC NOTE // %04d" % (run_seed % 10000), Vector2(W * 0.5, 139.0), 10, Color(CREAM, 0.42))
 
 
 func _draw_signal_details() -> void:
@@ -1760,7 +1843,7 @@ func _draw_blocks() -> void:
 				inner_points,
 				triangle_fill.lerp(CREAM, hit_flash_ratio * 0.32)
 			)
-		_draw_centered_label(hp, label_center, 24, label_color)
+		_draw_alien_number(hp, label_center, 30.0, label_color, 3.0)
 
 
 func _draw_cell_texture(texture: Texture2D, rect: Rect2, alpha: float = 1.0) -> void:
@@ -1795,6 +1878,100 @@ func _draw_black_hole_sides(rect: Rect2, absorbing_sides: Array) -> void:
 			arrow_tip - inward * 4.0 - side_vector * 6.0
 		]), CORAL)
 		draw_circle(arrow_tip - inward * 10.0, 2.5, Color(CREAM, 0.62))
+
+
+func _draw_panel_frame(rect: Rect2, fill: Color, border: Color, width: float) -> void:
+	draw_rect(Rect2(rect.position + Vector2(0.0, 4.0), rect.size), Color(PAPER_SHADOW, 0.76), true)
+	draw_rect(rect, fill, true)
+	draw_rect(rect, border, false, width, true)
+	draw_rect(rect.grow(-7.0), Color(border, 0.16), false, 1.0, true)
+
+
+func _draw_footer() -> void:
+	var footer := Rect2(BOARD_LEFT, 1110.0, BOARD_RIGHT - BOARD_LEFT, 152.0)
+	_draw_panel_frame(footer, Color(PANEL, 0.99), Color(CREAM, 0.72), 3.0)
+	_draw_footer_menu_control()
+	_draw_radio_console(Rect2(154.0, 1122.0, 412.0, 120.0))
+	_draw_footer_recall_control()
+
+
+func _draw_footer_menu_control() -> void:
+	var rect := _menu_button_rect()
+	var center := Vector2(rect.get_center().x, 1179.0)
+	draw_circle(center + Vector2(0.0, 3.0), 29.0, Color(PAPER_SHADOW, 0.72))
+	draw_circle(center, 27.0, Color(PLAYFIELD_BG, 0.98))
+	draw_arc(center, 27.0, 0.0, TAU, 36, Color(CREAM, 0.55), 2.4, true)
+	for offset in [-8.0, 0.0, 8.0]:
+		draw_line(center + Vector2(-10.0, offset), center + Vector2(10.0, offset), AQUA, 2.8, true)
+	_draw_centered_label("MENU", Vector2(center.x, 1227.0), 11, Color(CREAM, 0.76))
+
+
+func _draw_footer_recall_control() -> void:
+	var rect := _recall_button_rect()
+	var center := Vector2(rect.get_center().x, 1179.0)
+	var enabled := state == TurnState.FIRING
+	var accent := AQUA if enabled else Color(MUTED, 0.38)
+	draw_circle(center + Vector2(0.0, 3.0), 29.0, Color(PAPER_SHADOW, 0.72))
+	draw_circle(center, 27.0, Color(PLAYFIELD_BG, 0.98))
+	draw_arc(center, 27.0, 0.0, TAU, 36, Color(CREAM, 0.48), 2.4, true)
+	draw_arc(center, 13.0, -PI * 0.72, PI * 0.72, 24, accent, 3.0, true)
+	var tip := center + Vector2(-11.0, -9.0)
+	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(10.0, 0.0), tip + Vector2(4.0, 9.0)]), accent)
+	_draw_centered_label("RECALL", Vector2(center.x, 1227.0), 11, Color(CREAM, 0.76 if enabled else 0.34))
+
+
+func _draw_radio_console(rect: Rect2) -> void:
+	draw_rect(rect, Color(BG, 0.64), true)
+	draw_rect(rect, Color(CREAM, 0.38), false, 1.5, true)
+	_draw_centered_label("RADIO", Vector2(rect.get_center().x, rect.position.y + 16.0), 11, Color(CREAM, 0.74))
+	# Speaker grille, kept visually weighted to the left as in the approved board.
+	var speaker_center := Vector2(rect.position.x + 48.0, rect.position.y + 66.0)
+	draw_circle(speaker_center, 30.0, Color(PLAYFIELD_BG, 0.96))
+	draw_arc(speaker_center, 30.0, 0.0, TAU, 36, Color(CREAM, 0.42), 2.0, true)
+	for y_offset in [-16.0, -8.0, 0.0, 8.0, 16.0]:
+		var half_width := sqrt(maxf(0.0, 25.0 * 25.0 - y_offset * y_offset))
+		draw_line(speaker_center + Vector2(-half_width, y_offset), speaker_center + Vector2(half_width, y_offset), Color(AQUA, 0.48), 1.5, true)
+	var wave_rect := Rect2(rect.position + Vector2(91.0, 40.0), Vector2(231.0, 48.0))
+	_draw_radio_waveform(wave_rect)
+	var status := "READY"
+	if radio_clear_elapsed < RADIO_CLEAR_DURATION:
+		status = "FIELD CLEAR"
+	elif state == TurnState.FIRING:
+		status = "%02d / %02d SIGNALS" % [launched_ball_count, ball_count]
+	elif state == TurnState.ADVANCING:
+		status = "ROW SHIFT"
+	_draw_centered_label(status, Vector2(wave_rect.get_center().x, rect.position.y + 103.0), 9, Color(AQUA, 0.72))
+	# Reserved physical control: visible and tactile, intentionally non-functional.
+	var knob_center := Vector2(rect.end.x - 39.0, rect.position.y + 66.0)
+	draw_circle(knob_center + Vector2(0.0, 3.0), 25.0, Color(PAPER_SHADOW, 0.72))
+	draw_circle(knob_center, 24.0, Color(PLAYFIELD_BG, 1.0))
+	draw_arc(knob_center, 24.0, 0.0, TAU, 32, Color(AMBER, 0.68), 2.4, true)
+	draw_arc(knob_center, 13.0, 0.0, TAU, 28, Color(CREAM, 0.52), 2.0, true)
+	draw_line(knob_center, knob_center + Vector2(0.0, -11.0), AMBER, 2.5, true)
+	draw_circle(knob_center + Vector2(20.0, -24.0), 2.8, Color(CORAL, 0.88))
+
+
+func _draw_radio_waveform(rect: Rect2) -> void:
+	draw_line(Vector2(rect.position.x, rect.get_center().y), Vector2(rect.end.x, rect.get_center().y), Color(CREAM, 0.12), 1.0, true)
+	var points := PackedVector2Array()
+	var point_count := 58
+	var clear_active := radio_clear_elapsed < RADIO_CLEAR_DURATION
+	for index in range(point_count):
+		var ratio := float(index) / float(point_count - 1)
+		var history := (1.0 - ratio) * 0.20
+		var idle := sin(radio_phase * 1.7 + ratio * TAU * 2.0) * 1.6
+		var hit := sin(radio_phase * 5.2 + ratio * TAU * 7.0) * radio_hit_energy * 8.5
+		var clear_signal := 0.0
+		if clear_active:
+			clear_signal = _happy_radio_sample(radio_clear_elapsed - history) * 17.0
+		var y := rect.get_center().y - idle - hit - clear_signal
+		points.append(Vector2(lerpf(rect.position.x, rect.end.x, ratio), y))
+	var color := AQUA
+	if clear_active:
+		color = AMBER.lerp(CORAL, 0.35 + sin(radio_phase * 2.0) * 0.15)
+	elif radio_hit_energy > 0.18:
+		color = AQUA.lerp(AMBER, minf(0.68, radio_hit_energy * 0.42))
+	draw_polyline(points, color, 2.4, true)
 
 
 func _draw_recall_button() -> void:
@@ -1958,6 +2135,51 @@ func _draw_centered_label(text: String, center: Vector2, font_size: int, color: 
 	var text_size := fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var baseline := center + Vector2(-text_size.x * 0.5, text_size.y * 0.34)
 	draw_string(fallback_font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+
+
+func _draw_alien_number(text: String, center: Vector2, height: float, color: Color, stroke_width: float) -> void:
+	# Bespoke chamfered signal glyphs keep HP readable at phone scale while
+	# giving every number the selected geometric/alien display language.
+	var digit_width := height * 0.58
+	var spacing := height * 0.18
+	var total_width := digit_width * text.length() + spacing * maxi(0, text.length() - 1)
+	var origin := center - Vector2(total_width * 0.5, height * 0.5)
+	for digit_index in range(text.length()):
+		var digit := text.substr(digit_index, 1)
+		var digit_origin := origin + Vector2(float(digit_index) * (digit_width + spacing), 0.0)
+		for segment_name in _alien_digit_segments(digit):
+			var segment := _alien_segment_points(String(segment_name))
+			var first := digit_origin + Vector2(segment[0].x * digit_width, segment[0].y * height)
+			var second := digit_origin + Vector2(segment[1].x * digit_width, segment[1].y * height)
+			draw_line(first, second, Color(PAPER_SHADOW, color.a * 0.58), stroke_width + 2.2, true)
+			draw_line(first, second, color, stroke_width, true)
+
+
+func _alien_digit_segments(digit: String) -> Array[String]:
+	match digit:
+		"0": return ["a", "b", "c", "d", "e", "f"]
+		"1": return ["b", "c"]
+		"2": return ["a", "b", "g", "e", "d"]
+		"3": return ["a", "b", "g", "c", "d"]
+		"4": return ["f", "g", "b", "c"]
+		"5": return ["a", "f", "g", "c", "d"]
+		"6": return ["a", "f", "g", "e", "c", "d"]
+		"7": return ["a", "b", "c"]
+		"8": return ["a", "b", "c", "d", "e", "f", "g"]
+		"9": return ["a", "b", "c", "d", "f", "g"]
+	return []
+
+
+func _alien_segment_points(segment_name: String) -> PackedVector2Array:
+	match segment_name:
+		"a": return PackedVector2Array([Vector2(0.16, 0.04), Vector2(0.82, 0.04)])
+		"b": return PackedVector2Array([Vector2(0.86, 0.10), Vector2(0.96, 0.44)])
+		"c": return PackedVector2Array([Vector2(0.96, 0.56), Vector2(0.86, 0.90)])
+		"d": return PackedVector2Array([Vector2(0.82, 0.96), Vector2(0.16, 0.96)])
+		"e": return PackedVector2Array([Vector2(0.14, 0.90), Vector2(0.04, 0.56)])
+		"f": return PackedVector2Array([Vector2(0.04, 0.44), Vector2(0.14, 0.10)])
+		"g": return PackedVector2Array([Vector2(0.18, 0.50), Vector2(0.82, 0.50)])
+	return PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
 
 
 func _draw_ellipse(center: Vector2, radii: Vector2, color: Color, width: float, segments: int = 32) -> void:
