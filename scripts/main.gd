@@ -39,6 +39,9 @@ const MAX_HORIZONTAL_COMPONENT := 0.965926
 const BALL_SPEED := 760.0
 const BALL_RADIUS := 9.0
 const BALL_COLLISION_RADIUS := 10.0
+const WALL_COLLISION_LAYER := 1
+const BALL_COLLISION_LAYER := 2
+const BLOCK_COLLISION_LAYER := 4
 const BALL_LAUNCH_INTERVAL := 0.075
 const PICKUP_RADIUS := 19.0
 const TRIANGLE_CHANCE := 0.28
@@ -53,6 +56,8 @@ const PHASE_BLOCK_START_TURN := 8
 const ION_BEAM_START_TURN := 4
 const ION_BEAM_RADIUS := 20.0
 const ION_BEAM_EFFECT_DURATION := 0.30
+const GHOST_CORE_START_TURN := 8
+const GHOST_CORE_RADIUS := 20.0
 
 const BG := Color("#08191c")
 const PLAYFIELD_BG := Color("#0b2225")
@@ -65,6 +70,7 @@ const VOID_PURPLE := Color("#b36cff")
 const VOID_DARK := Color("#020608")
 const PHASE_BLUE := Color("#78a8ff")
 const ION_BLUE := Color("#32d8ff")
+const GHOST_PURPLE := Color("#b58cff")
 const MUTED := Color("#55777a")
 const CREAM := Color("#f3e7c5")
 
@@ -95,6 +101,7 @@ var blocks: Array[Dictionary] = []
 var pickups: Array[Dictionary] = []
 var ion_powers: Array[Dictionary] = []
 var ion_beam_effects: Array[Dictionary] = []
+var ghost_cores: Array[Dictionary] = []
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
@@ -115,6 +122,7 @@ func _create_boundaries() -> void:
 func _add_wall(position: Vector2, size: Vector2) -> void:
 	var wall := StaticBody2D.new()
 	wall.position = position
+	wall.collision_layer = WALL_COLLISION_LAYER
 	wall.set_meta("kind", "wall")
 	var collision := CollisionShape2D.new()
 	var shape := RectangleShape2D.new()
@@ -168,6 +176,7 @@ func _clear_run_objects() -> void:
 	pickups.clear()
 	ion_powers.clear()
 	ion_beam_effects.clear()
+	ghost_cores.clear()
 
 
 func _cell_center(column: int, row: int) -> Vector2:
@@ -264,10 +273,11 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 		"collected": false
 	})
 
-	# Keep the permanent +1 pickup, then use a second empty cell for Ion Beam
-	# when the generated row has enough room.
-	if block_count + 1 < COLUMN_COUNT and rng.randf() < _ion_beam_spawn_chance():
-		var ion_column := columns[block_count + 1]
+	# Keep the permanent +1 pickup, then assign powers only to remaining empty
+	# cells. Ion Beam and Ghost Core can coexist when the row has enough room.
+	var next_power_index := block_count + 1
+	if next_power_index < COLUMN_COUNT and rng.randf() < _ion_beam_spawn_chance():
+		var ion_column := columns[next_power_index]
 		ion_powers.append({
 			"column": ion_column,
 			"row": row,
@@ -275,6 +285,16 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 			"orientation": "horizontal" if rng.randf() < 0.5 else "vertical",
 			"activated": false,
 			"balls_inside": {}
+		})
+		next_power_index += 1
+
+	if next_power_index < COLUMN_COUNT and rng.randf() < _ghost_core_spawn_chance():
+		var ghost_column := columns[next_power_index]
+		ghost_cores.append({
+			"column": ghost_column,
+			"row": row,
+			"position": _spawn_position(ghost_column, row),
+			"activated": false
 		})
 
 
@@ -338,6 +358,12 @@ func _ion_beam_spawn_chance() -> float:
 	return 0.36
 
 
+func _ghost_core_spawn_chance() -> float:
+	if turn < GHOST_CORE_START_TURN:
+		return 0.0
+	return 0.18
+
+
 func _choose_black_hole_sides() -> Array[String]:
 	var sides: Array[String] = ["left", "right", "top", "bottom"]
 	for index in range(sides.size() - 1, 0, -1):
@@ -368,6 +394,7 @@ func _shuffled_columns() -> Array[int]:
 func _add_square_block(column: int, row: int, hp: int, variant: String = "normal", absorbing_sides: Array[String] = []) -> void:
 	var body := StaticBody2D.new()
 	body.position = _spawn_position(column, row)
+	body.collision_layer = BLOCK_COLLISION_LAYER
 	body.set_meta("kind", "block")
 	body.set_meta("block_index", blocks.size())
 	var collision := CollisionShape2D.new()
@@ -394,6 +421,7 @@ func _add_square_block(column: int, row: int, hp: int, variant: String = "normal
 func _add_triangle_block(column: int, row: int, hp: int, orientation: String, variant: String = "normal") -> void:
 	var body := StaticBody2D.new()
 	body.position = _spawn_position(column, row)
+	body.collision_layer = BLOCK_COLLISION_LAYER
 	body.set_meta("kind", "block")
 	body.set_meta("block_index", blocks.size())
 	var collision := CollisionPolygon2D.new()
@@ -579,8 +607,8 @@ func _spawn_volley_ball() -> void:
 	var body := CharacterBody2D.new()
 	body.position = launcher
 	# Balls share the same launch path but must never collide with one another.
-	body.collision_layer = 2
-	body.collision_mask = 1
+	body.collision_layer = BALL_COLLISION_LAYER
+	body.collision_mask = WALL_COLLISION_LAYER | BLOCK_COLLISION_LAYER
 	var collision := CollisionShape2D.new()
 	var shape := CircleShape2D.new()
 	# The collision radius is intentionally one pixel larger than the rendered
@@ -592,7 +620,9 @@ func _spawn_volley_ball() -> void:
 	balls.append({
 		"body": body,
 		"velocity": volley_direction * BALL_SPEED,
-		"returned": false
+		"returned": false,
+		"ghost": false,
+		"ghost_blocks_inside": {}
 	})
 	launched_ball_count += 1
 	active_ball_count += 1
@@ -620,6 +650,7 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(body):
 			continue
 		var velocity: Vector2 = entry["velocity"]
+		var previous_position := body.position
 		var collision := body.move_and_collide(velocity * delta)
 		if collision:
 			velocity = velocity.bounce(collision.get_normal()).normalized() * BALL_SPEED
@@ -634,6 +665,8 @@ func _physics_process(delta: float) -> void:
 
 		_collect_pickups_at(body.position)
 		_activate_ion_powers_at(body)
+		_activate_ghost_cores_at(entry)
+		_damage_blocks_crossed_by_ghost(entry, previous_position)
 		if body.position.y > RETURN_Y + 32.0:
 			_return_ball(entry)
 
@@ -710,6 +743,77 @@ func _activate_ion_powers_at(ball: CharacterBody2D) -> void:
 		balls_inside[ball_id] = true
 		power["activated"] = true
 		_fire_ion_beam(power_position, String(power["orientation"]))
+
+
+func _activate_ghost_cores_at(entry: Dictionary) -> void:
+	var body: CharacterBody2D = entry["body"] as CharacterBody2D
+	if not is_instance_valid(body):
+		return
+	for core in ghost_cores:
+		var core_position: Vector2 = core["position"]
+		if body.position.distance_to(core_position) > GHOST_CORE_RADIUS + BALL_RADIUS:
+			continue
+		core["activated"] = true
+		entry["ghost"] = true
+		# Ghost balls still collide with the three board walls, but every block
+		# and every black-hole side becomes physically transparent.
+		body.collision_mask = WALL_COLLISION_LAYER
+
+
+func _damage_blocks_crossed_by_ghost(entry: Dictionary, previous_position: Vector2) -> void:
+	if not bool(entry.get("ghost", false)):
+		return
+	var body: CharacterBody2D = entry["body"] as CharacterBody2D
+	if not is_instance_valid(body):
+		return
+	var blocks_inside: Dictionary = entry["ghost_blocks_inside"]
+	for item in blocks:
+		var block_body: StaticBody2D = item["body"] as StaticBody2D
+		if not is_instance_valid(block_body):
+			continue
+		var block_id := block_body.get_instance_id()
+		if String(item.get("variant", "normal")) == "phase" and not bool(item.get("phase_active", true)):
+			blocks_inside.erase(block_id)
+			continue
+		var currently_inside := _ghost_point_overlaps_block(body.position, item)
+		var crossed := _ghost_path_crosses_block(previous_position, body.position, item)
+		if crossed and not blocks_inside.has(block_id):
+			blocks_inside[block_id] = true
+			_hit_block(block_body)
+		if not currently_inside:
+			blocks_inside.erase(block_id)
+
+
+func _ghost_path_crosses_block(from: Vector2, to: Vector2, item: Dictionary) -> bool:
+	var distance := from.distance_to(to)
+	var sample_step := maxf(4.0, BALL_RADIUS * 0.6)
+	var sample_count := maxi(1, int(ceil(distance / sample_step)))
+	for sample_index in range(sample_count + 1):
+		var sample_position := from.lerp(to, float(sample_index) / float(sample_count))
+		if _ghost_point_overlaps_block(sample_position, item):
+			return true
+	return false
+
+
+func _ghost_point_overlaps_block(point: Vector2, item: Dictionary) -> bool:
+	var center: Vector2 = item["position"]
+	if String(item["shape"]) == "square":
+		return Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL)).grow(BALL_RADIUS * 0.55).has_point(point)
+
+	var polygon := PackedVector2Array()
+	for local_point in _triangle_local_points(String(item["orientation"])):
+		polygon.append(center + local_point)
+	var probe_distance := BALL_RADIUS * 0.55
+	for offset in [
+		Vector2.ZERO,
+		Vector2(probe_distance, 0.0),
+		Vector2(-probe_distance, 0.0),
+		Vector2(0.0, probe_distance),
+		Vector2(0.0, -probe_distance)
+	]:
+		if Geometry2D.is_point_in_polygon(point + offset, polygon):
+			return true
+	return false
 
 
 func _fire_ion_beam(beam_position: Vector2, orientation: String) -> void:
@@ -792,6 +896,12 @@ func _begin_board_advance() -> void:
 			remaining_ion_powers.append(power)
 	ion_powers = remaining_ion_powers
 
+	var remaining_ghost_cores: Array[Dictionary] = []
+	for core in ghost_cores:
+		if not bool(core["activated"]):
+			remaining_ghost_cores.append(core)
+	ghost_cores = remaining_ghost_cores
+
 	turn += 1
 	_spawn_row(turn, -1)
 
@@ -818,6 +928,13 @@ func _begin_board_advance() -> void:
 		power["move_from"] = power_position
 		power["move_to"] = _cell_center(int(power["column"]), target_row)
 
+	for core in ghost_cores:
+		var target_row := int(core["row"]) + 1
+		core["row"] = target_row
+		var core_position: Vector2 = core["position"]
+		core["move_from"] = core_position
+		core["move_to"] = _cell_center(int(core["column"]), target_row)
+
 
 func _toggle_phase_blocks() -> void:
 	for item in blocks:
@@ -828,7 +945,7 @@ func _toggle_phase_blocks() -> void:
 			continue
 		var is_active := not bool(item.get("phase_active", true))
 		item["phase_active"] = is_active
-		body.collision_layer = 1 if is_active else 0
+		body.collision_layer = BLOCK_COLLISION_LAYER if is_active else 0
 
 
 func _process_board_advance(delta: float) -> void:
@@ -855,6 +972,11 @@ func _process_board_advance(delta: float) -> void:
 		var move_from: Vector2 = power["move_from"]
 		var move_to: Vector2 = power["move_to"]
 		power["position"] = move_from.lerp(move_to, eased)
+
+	for core in ghost_cores:
+		var move_from: Vector2 = core["move_from"]
+		var move_to: Vector2 = core["move_to"]
+		core["position"] = move_from.lerp(move_to, eased)
 
 	if progress < 1.0:
 		return
@@ -887,6 +1009,15 @@ func _process_board_advance(delta: float) -> void:
 			visible_ion_powers.append(power)
 	ion_powers = visible_ion_powers
 
+	var visible_ghost_cores: Array[Dictionary] = []
+	for core in ghost_cores:
+		core.erase("move_from")
+		core.erase("move_to")
+		var core_position: Vector2 = core["position"]
+		if core_position.y < LAUNCH_LINE_Y:
+			visible_ghost_cores.append(core)
+	ghost_cores = visible_ghost_cores
+
 	if reached_danger:
 		state = TurnState.GAME_OVER
 		is_aiming = false
@@ -907,6 +1038,7 @@ func _draw() -> void:
 	_draw_blocks()
 	_draw_pickups()
 	_draw_ion_powers()
+	_draw_ghost_cores()
 	_draw_ion_beam_effects()
 
 	if state == TurnState.AIMING:
@@ -948,8 +1080,16 @@ func _draw_active_balls() -> void:
 		var body: CharacterBody2D = entry["body"] as CharacterBody2D
 		if not is_instance_valid(body):
 			continue
-		draw_circle(body.position, BALL_RADIUS, AQUA)
-		draw_circle(body.position, 4.0, CREAM)
+		if bool(entry.get("ghost", false)):
+			var velocity: Vector2 = entry["velocity"]
+			var trail_end := body.position - velocity.normalized() * 24.0
+			draw_line(trail_end, body.position, Color(GHOST_PURPLE, 0.28), 6.0, true)
+			draw_circle(body.position, BALL_RADIUS, Color(GHOST_PURPLE, 0.42))
+			draw_arc(body.position, BALL_RADIUS, 0.0, TAU, 24, Color(CREAM, 0.78), 2.0, true)
+			draw_circle(body.position, 3.0, Color(CREAM, 0.62))
+		else:
+			draw_circle(body.position, BALL_RADIUS, AQUA)
+			draw_circle(body.position, 4.0, CREAM)
 
 
 func _draw_aim_guide() -> void:
@@ -1173,6 +1313,17 @@ func _draw_ion_powers() -> void:
 				center + Vector2(8.0, -6.0),
 				center + Vector2(8.0, 6.0)
 			]), color)
+
+
+func _draw_ghost_cores() -> void:
+	for core in ghost_cores:
+		var center: Vector2 = core["position"]
+		var color := Color(CORAL, 0.82) if bool(core["activated"]) else GHOST_PURPLE
+		draw_circle(center, GHOST_CORE_RADIUS, Color(PANEL, 0.90))
+		# Broken, offset rings make the pickup readable without relying on text.
+		draw_arc(center + Vector2(-2.0, 0.0), 15.0, -PI * 0.82, PI * 0.28, 22, color, 4.0, true)
+		draw_arc(center + Vector2(2.0, 0.0), 11.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 3.0, true)
+		draw_circle(center, 3.0, color)
 
 
 func _draw_ion_beam_effects() -> void:
