@@ -69,6 +69,13 @@ const RADIO_SAMPLE_RATE := 22050
 const BLOCK_HIT_DURATION := 0.085
 const BLOCK_HIT_PLAYER_COUNT := 6
 const SETTINGS_PATH := "user://ryko_settings.cfg"
+const BALL_SOUND_NAMES := [
+	"WARM PULSE",
+	"SOFT TAP",
+	"GLASS CHIME",
+	"RUBBER POP",
+	"RETRO BLIP"
+]
 const BACKGROUND_NAMES := [
 	"STAR CHART",
 	"MISSION LOG",
@@ -99,6 +106,7 @@ const MUTED := Color("#6e8584")
 const CREAM := Color("#f2e3bb")
 const PAPER_FIBER := Color("#b9a984")
 const PAPER_SHADOW := Color("#020b0e")
+const BALL_SOUND_ACCENTS := [AMBER, AQUA, ION_BLUE, CORAL, PHASE_BLUE]
 
 # Full-cell paper illustrations. Geometry, collision borders and HP text remain
 # code-driven so the artwork can never alter gameplay alignment or readability.
@@ -157,12 +165,14 @@ var supernova_charged_count := 0
 var menu_open := false
 var menu_page := 0
 var selected_background := 0
+var selected_ball_sound := 0
 var radio_hit_energy := 0.0
 var radio_phase := 0.0
 var radio_clear_elapsed := RADIO_CLEAR_DURATION
 var field_clear_triggered := false
 var radio_audio_player: AudioStreamPlayer
 var block_hit_audio_players: Array[AudioStreamPlayer] = []
+var block_hit_sound_streams: Array[AudioStreamWAV] = []
 var block_hit_audio_cursor := 0
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
@@ -171,8 +181,8 @@ var run_seed := 0
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
-	_create_radio_audio()
 	_load_settings()
+	_create_radio_audio()
 	_create_boundaries()
 	_start_new_run()
 
@@ -183,12 +193,13 @@ func _create_radio_audio() -> void:
 	radio_audio_player.volume_db = -8.0
 	radio_audio_player.stream = _build_happy_radio_chirp()
 	add_child(radio_audio_player)
-	var hit_stream := _build_block_hit_sound()
+	for sound_index in range(BALL_SOUND_NAMES.size()):
+		block_hit_sound_streams.append(_build_block_hit_sound(sound_index))
 	for index in range(BLOCK_HIT_PLAYER_COUNT):
 		var player := AudioStreamPlayer.new()
 		player.name = "BlockHit%02d" % index
 		player.volume_db = -17.0
-		player.stream = hit_stream
+		player.stream = block_hit_sound_streams[selected_ball_sound]
 		block_hit_audio_players.append(player)
 		add_child(player)
 
@@ -230,7 +241,7 @@ func _happy_radio_sample(time: float) -> float:
 	return carrier * envelope * fade_out * robot_tremolo * 0.82
 
 
-func _build_block_hit_sound() -> AudioStreamWAV:
+func _build_block_hit_sound(sound_index: int = 0) -> AudioStreamWAV:
 	var stream := AudioStreamWAV.new()
 	stream.format = AudioStreamWAV.FORMAT_16_BITS
 	stream.mix_rate = RADIO_SAMPLE_RATE
@@ -241,15 +252,50 @@ func _build_block_hit_sound() -> AudioStreamWAV:
 	data.resize(sample_count * 2)
 	for sample_index in range(sample_count):
 		var time := float(sample_index) / float(RADIO_SAMPLE_RATE)
-		var attack := clampf(time / 0.004, 0.0, 1.0)
-		var decay := exp(-time * 42.0)
-		# A tiny downward pitch glide makes a soft cosmic pluck instead of a click.
-		var phase := TAU * (840.0 * time - 1250.0 * time * time)
-		var tone := sin(phase) * 0.72 + sin(phase * 1.5) * 0.16 + sin(phase * 0.5) * 0.10
-		var sample := tone * attack * decay * 0.72
+		var sample := _block_hit_sample(sound_index, time)
 		data.encode_s16(sample_index * 2, int(clampf(sample, -0.90, 0.90) * 32767.0))
 	stream.data = data
 	return stream
+
+
+func _block_hit_sample(sound_index: int, time: float) -> float:
+	var attack := clampf(time / 0.004, 0.0, 1.0)
+	match sound_index:
+		1: # Soft tap: quiet, rounded and slightly lower than the default sound.
+			var decay := exp(-time * 50.0)
+			var phase := TAU * (520.0 * time - 620.0 * time * time)
+			return (sin(phase) * 0.82 + sin(phase * 0.5) * 0.18) * attack * decay * 0.56
+		2: # Glass chime: a short, bright pair of inharmonic partials.
+			var decay := exp(-time * 29.0)
+			var shimmer := sin(TAU * 1380.0 * time) * 0.57 + sin(TAU * 2075.0 * time) * 0.27
+			return shimmer * attack * decay * 0.66
+		3: # Rubber pop: a low elastic pitch dive with a soft upper knock.
+			var decay := exp(-time * 37.0)
+			var phase := TAU * (390.0 * time - 1180.0 * time * time)
+			var body := sin(phase) * 0.78 + sin(phase * 2.0) * 0.13
+			return body * attack * decay * 0.72
+		4: # Retro blip: two rounded oscillator steps, deliberately arcade-like.
+			var decay := exp(-time * 34.0)
+			var frequency := 760.0 if time < 0.035 else 570.0
+			var phase := TAU * frequency * time
+			var rounded_square := sin(phase) * 0.78 + sin(phase * 3.0) * 0.12
+			return rounded_square * attack * decay * 0.64
+		_: # Warm pulse: the current pleasant cosmic pluck.
+			var decay := exp(-time * 42.0)
+			var phase := TAU * (840.0 * time - 1250.0 * time * time)
+			var tone := sin(phase) * 0.72 + sin(phase * 1.5) * 0.16 + sin(phase * 0.5) * 0.10
+			return tone * attack * decay * 0.72
+
+
+func _select_ball_sound(sound_index: int, play_preview: bool = false) -> void:
+	selected_ball_sound = clampi(sound_index, 0, BALL_SOUND_NAMES.size() - 1)
+	if not block_hit_sound_streams.is_empty():
+		for player in block_hit_audio_players:
+			player.stop()
+			player.pitch_scale = 1.0
+			player.stream = block_hit_sound_streams[selected_ball_sound]
+	if play_preview and not block_hit_audio_players.is_empty():
+		block_hit_audio_players[0].play()
 
 
 func _play_block_hit_sound() -> void:
@@ -298,11 +344,13 @@ func _load_settings() -> void:
 	if config.load(SETTINGS_PATH) != OK:
 		return
 	selected_background = clampi(int(config.get_value("visual", "background", 0)), 0, BACKGROUND_NAMES.size() - 1)
+	selected_ball_sound = clampi(int(config.get_value("audio", "ball_sound", 0)), 0, BALL_SOUND_NAMES.size() - 1)
 
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
 	config.set_value("visual", "background", selected_background)
+	config.set_value("audio", "ball_sound", selected_ball_sound)
 	config.save(SETTINGS_PATH)
 
 
@@ -707,19 +755,27 @@ func _menu_theme_rect(display_slot: int) -> Rect2:
 
 
 func _menu_backgrounds_rect() -> Rect2:
-	return Rect2(Vector2(120.0, 230.0), Vector2(480.0, 82.0))
+	return Rect2(Vector2(120.0, 175.0), Vector2(480.0, 82.0))
+
+
+func _menu_ball_sounds_rect() -> Rect2:
+	return Rect2(Vector2(120.0, 310.0), Vector2(480.0, 82.0))
 
 
 func _menu_restart_rect() -> Rect2:
-	return Rect2(Vector2(120.0, 450.0), Vector2(480.0, 82.0))
+	return Rect2(Vector2(120.0, 560.0), Vector2(480.0, 82.0))
 
 
 func _menu_legend_rect() -> Rect2:
-	return Rect2(Vector2(120.0, 340.0), Vector2(480.0, 82.0))
+	return Rect2(Vector2(120.0, 450.0), Vector2(480.0, 82.0))
 
 
 func _menu_resume_rect() -> Rect2:
-	return Rect2(Vector2(120.0, 560.0), Vector2(480.0, 82.0))
+	return Rect2(Vector2(120.0, 670.0), Vector2(480.0, 82.0))
+
+
+func _menu_ball_sound_option_rect(sound_index: int) -> Rect2:
+	return Rect2(Vector2(64.0, 145.0 + sound_index * 135.0), Vector2(592.0, 112.0))
 
 
 func _legend_back_rect() -> Rect2:
@@ -728,6 +784,10 @@ func _legend_back_rect() -> Rect2:
 
 func _backgrounds_back_rect() -> Rect2:
 	return Rect2(Vector2(260.0, 740.0), Vector2(200.0, 58.0))
+
+
+func _ball_sounds_back_rect() -> Rect2:
+	return Rect2(Vector2(260.0, 880.0), Vector2(200.0, 58.0))
 
 
 func _open_menu() -> void:
@@ -759,8 +819,24 @@ func _handle_menu_press(pointer: Vector2) -> void:
 				return
 		return
 
+	if menu_page == 3:
+		if _ball_sounds_back_rect().has_point(pointer):
+			menu_page = 0
+			queue_redraw()
+			return
+		for sound_index in range(BALL_SOUND_NAMES.size()):
+			if _menu_ball_sound_option_rect(sound_index).has_point(pointer):
+				_select_ball_sound(sound_index, true)
+				_save_settings()
+				queue_redraw()
+				return
+		return
+
 	if _menu_backgrounds_rect().has_point(pointer):
 		menu_page = 2
+		queue_redraw()
+	elif _menu_ball_sounds_rect().has_point(pointer):
+		menu_page = 3
 		queue_redraw()
 	elif _menu_restart_rect().has_point(pointer):
 		menu_open = false
@@ -2146,15 +2222,20 @@ func _draw_menu_overlay() -> void:
 	if menu_page == 2:
 		_draw_backgrounds_page()
 		return
+	if menu_page == 3:
+		_draw_ball_sounds_page()
+		return
 
 	_draw_centered_label("RYKO MENU", Vector2(W * 0.5, 68.0), 28, CREAM)
 	_draw_centered_label("MISSION CONTROL", Vector2(W * 0.5, 111.0), 14, Color(AQUA, 0.90))
 	_draw_menu_action_button(_menu_backgrounds_rect(), "BACKGROUNDS", PHASE_BLUE)
-	_draw_centered_label(BACKGROUND_NAMES[selected_background], Vector2(W * 0.5, 324.0), 11, Color(CREAM, 0.52))
+	_draw_centered_label(BACKGROUND_NAMES[selected_background], Vector2(W * 0.5, 276.0), 11, Color(CREAM, 0.52))
+	_draw_menu_action_button(_menu_ball_sounds_rect(), "BALL SOUNDS", BALL_SOUND_ACCENTS[selected_ball_sound])
+	_draw_centered_label(BALL_SOUND_NAMES[selected_ball_sound], Vector2(W * 0.5, 411.0), 11, Color(CREAM, 0.52))
 	_draw_menu_action_button(_menu_restart_rect(), "RESTART", CORAL)
 	_draw_menu_action_button(_menu_legend_rect(), "LEGEND", AMBER)
 	_draw_menu_action_button(_menu_resume_rect(), "RESUME", AQUA)
-	_draw_centered_label("SETTINGS ARE SAVED ON THIS DEVICE", Vector2(W * 0.5, 690.0), 11, Color(CREAM, 0.54))
+	_draw_centered_label("SETTINGS ARE SAVED ON THIS DEVICE", Vector2(W * 0.5, 790.0), 11, Color(CREAM, 0.54))
 	_draw_menu_mission_notes()
 
 
@@ -2182,6 +2263,38 @@ func _draw_theme_card(display_slot: int, index: int) -> void:
 	_draw_centered_label("%02d" % [display_slot + 1], Vector2(label_center_x, rect.position.y + 32.0), 16, AMBER)
 	_draw_centered_label(BACKGROUND_NAMES[index], Vector2(label_center_x, rect.position.y + 62.0), 11, CREAM)
 	_draw_centered_label("SELECTED" if selected else "TAP TO SELECT", Vector2(label_center_x, rect.position.y + 94.0), 9, AQUA if selected else Color(CREAM, 0.48))
+
+
+func _draw_ball_sounds_page() -> void:
+	_draw_centered_label("BALL SOUNDS", Vector2(W * 0.5, 67.0), 28, CREAM)
+	_draw_centered_label("TAP A SIGNAL TO SELECT AND PREVIEW", Vector2(W * 0.5, 108.0), 14, Color(AQUA, 0.90))
+	for sound_index in range(BALL_SOUND_NAMES.size()):
+		_draw_ball_sound_card(sound_index)
+	_draw_menu_action_button(_ball_sounds_back_rect(), "BACK", AQUA)
+	_draw_centered_label("SELECTION IS SAVED ON THIS DEVICE", Vector2(W * 0.5, 965.0), 11, Color(CREAM, 0.54))
+
+
+func _draw_ball_sound_card(sound_index: int) -> void:
+	var rect := _menu_ball_sound_option_rect(sound_index)
+	var selected := sound_index == selected_ball_sound
+	var accent: Color = BALL_SOUND_ACCENTS[sound_index]
+	draw_rect(rect, Color(PLAYFIELD_BG, 0.96), true)
+	draw_rect(rect, accent if selected else Color(CREAM, 0.34), false, 4.0 if selected else 2.0, true)
+	_draw_centered_label("%02d" % [sound_index + 1], Vector2(rect.position.x + 42.0, rect.position.y + 32.0), 15, accent)
+	draw_string(fallback_font, rect.position + Vector2(78.0, 38.0), BALL_SOUND_NAMES[sound_index], HORIZONTAL_ALIGNMENT_LEFT, 190.0, 16, CREAM)
+	draw_string(fallback_font, rect.position + Vector2(78.0, 75.0), "SELECTED" if selected else "TAP TO PREVIEW", HORIZONTAL_ALIGNMENT_LEFT, 190.0, 10, accent if selected else Color(CREAM, 0.48))
+	var wave_rect := Rect2(rect.position + Vector2(304.0, 24.0), Vector2(258.0, 64.0))
+	draw_line(Vector2(wave_rect.position.x, wave_rect.get_center().y), Vector2(wave_rect.end.x, wave_rect.get_center().y), Color(CREAM, 0.10), 1.0, true)
+	var points := PackedVector2Array()
+	for point_index in range(49):
+		var ratio := float(point_index) / 48.0
+		var envelope := exp(-ratio * (3.8 if sound_index == 2 else 5.2))
+		var frequency: float = float([5.5, 4.0, 10.0, 3.0, 7.0][sound_index])
+		var secondary := sin(ratio * TAU * (frequency * 1.7 + 1.0)) * (0.42 if sound_index == 2 else 0.20)
+		var wave_sample := (sin(ratio * TAU * frequency) + secondary) * envelope
+		points.append(Vector2(lerpf(wave_rect.position.x, wave_rect.end.x, ratio), wave_rect.get_center().y - wave_sample * 25.0))
+	if points.size() > 1:
+		draw_polyline(points, accent, 2.2, true)
 
 
 func _draw_menu_action_button(rect: Rect2, label: String, accent: Color) -> void:
