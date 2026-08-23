@@ -290,6 +290,21 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	# Keep the permanent +1 pickup, then assign powers only to remaining empty
 	# cells. Different powers can coexist when the row has enough room.
 	var next_power_index := block_count + 1
+	var supernova_spawned := false
+	# Test guarantee: reserve the first available power cell for Supernova on
+	# turn 10, before Ion or Ghost can consume the final empty column.
+	if turn == SUPERNOVA_CORE_START_TURN and next_power_index < COLUMN_COUNT:
+		var guaranteed_supernova_column := columns[next_power_index]
+		supernova_cores.append({
+			"column": guaranteed_supernova_column,
+			"row": row,
+			"position": _spawn_position(guaranteed_supernova_column, row),
+			"activated": false,
+			"pulse_elapsed": SUPERNOVA_EFFECT_DURATION
+		})
+		supernova_spawned = true
+		next_power_index += 1
+
 	if next_power_index < COLUMN_COUNT and rng.randf() < _ion_beam_spawn_chance():
 		var ion_column := columns[next_power_index]
 		ion_powers.append({
@@ -312,7 +327,7 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 		})
 		next_power_index += 1
 
-	if next_power_index < COLUMN_COUNT and rng.randf() < _supernova_core_spawn_chance():
+	if not supernova_spawned and next_power_index < COLUMN_COUNT and rng.randf() < _supernova_core_spawn_chance():
 		var supernova_column := columns[next_power_index]
 		supernova_cores.append({
 			"column": supernova_column,
