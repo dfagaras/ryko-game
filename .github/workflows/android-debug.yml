@@ -43,6 +43,31 @@ jobs:
             -keysize 2048 \
             -validity 10000
 
+      - name: Validate Godot project scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot_zip="$RUNNER_TEMP/godot-4.4.1.zip"
+          godot_dir="$RUNNER_TEMP/godot-4.4.1"
+          validation_log="$RUNNER_TEMP/godot-validation.log"
+
+          curl -L --fail --silent --show-error \
+            -o "$godot_zip" \
+            https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          mkdir -p "$godot_dir"
+          unzip -q "$godot_zip" -d "$godot_dir"
+
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-data" \
+          XDG_CONFIG_HOME="$RUNNER_TEMP/godot-config" \
+          XDG_CACHE_HOME="$RUNNER_TEMP/godot-cache" \
+            "$godot_dir/Godot_v4.4.1-stable_linux.x86_64" \
+            --headless --path . --editor --quit 2>&1 | tee "$validation_log"
+
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script" "$validation_log"; then
+            echo "Godot script validation failed."
+            exit 1
+          fi
+
       - name: Export Android debug APK
         id: export
         uses: firebelley/godot-export@v8.0.0
