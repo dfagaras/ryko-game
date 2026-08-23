@@ -112,6 +112,8 @@ const ICON_POWER_ION: Texture2D = preload("res://assets/icons/power_ion.png")
 const ICON_POWER_GHOST: Texture2D = preload("res://assets/icons/power_ghost.png")
 const ICON_POWER_SUPERNOVA: Texture2D = preload("res://assets/icons/power_supernova.png")
 const LAUNCHER_TEXTURE: Texture2D = preload("res://assets/launcher/retro_cannon.png")
+const MENU_SPEAKER_TEXTURE: Texture2D = preload("res://assets/ui/menu_speaker_2d.png")
+const RECALL_KNOB_TEXTURE: Texture2D = preload("res://assets/ui/recall_knob_2d.png")
 const BACKGROUND_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/backgrounds/star_chart.jpg"),
 	preload("res://assets/backgrounds/mission_log.jpg"),
@@ -2039,44 +2041,19 @@ func _draw_machine_screw(center: Vector2, radius: float) -> void:
 
 
 func _draw_integrated_menu_speaker(center: Vector2) -> void:
-	var shadow := _regular_polygon(center + Vector2(0.0, 4.0), 43.0, 8, PI / 8.0)
-	var outer := _regular_polygon(center, 43.0, 8, PI / 8.0)
-	var lip := _regular_polygon(center, 38.0, 8, PI / 8.0)
-	var well := _regular_polygon(center, 33.0, 8, PI / 8.0)
-	draw_colored_polygon(shadow, Color(PAPER_SHADOW, 0.92))
-	draw_colored_polygon(outer, Color(CREAM, 0.78))
-	draw_colored_polygon(lip, Color(AMBER, 0.30))
-	draw_colored_polygon(well, Color(BG, 1.0))
-	# Four tiny housing screws are deliberately separate from the footer screws.
-	for offset in [Vector2(-25, -23), Vector2(25, -23), Vector2(-25, 23), Vector2(25, 23)]:
-		_draw_machine_screw(center + offset, 2.7)
-	for y_offset in [-20.0, -14.0, -8.0, -2.0, 4.0, 10.0, 16.0]:
-		var half_width := sqrt(maxf(0.0, 27.0 * 27.0 - y_offset * y_offset))
-		draw_line(center + Vector2(-half_width, y_offset + 2.0), center + Vector2(half_width, y_offset + 2.0), Color(PAPER_SHADOW, 0.96), 5.0, true)
-		draw_line(center + Vector2(-half_width, y_offset), center + Vector2(half_width, y_offset), Color(AQUA, 0.46), 1.6, true)
+	# The detailed housing is a pre-rendered 2D asset; the label and touch area
+	# remain code-driven so the control behaves exactly as before.
+	var asset_rect := Rect2(center - Vector2(50.0, 50.0), Vector2(100.0, 100.0))
+	draw_texture_rect(MENU_SPEAKER_TEXTURE, asset_rect, false)
 	_draw_centered_label("MENU", Vector2(center.x, center.y + 55.0), 11, Color(CREAM, 0.92))
 
 
 func _draw_integrated_recall_knob(center: Vector2) -> void:
 	var enabled := state == TurnState.FIRING
-	var active_color := AMBER if enabled else Color(CREAM, 0.58)
-	# Dial ticks, receiver arcs and a tactile multi-layer knob.
-	for index in range(12):
-		var angle := TAU * float(index) / 12.0
-		var direction := Vector2(cos(angle), sin(angle))
-		draw_line(center + direction * 34.0, center + direction * (37.0 if index % 3 == 0 else 35.5), Color(CREAM, 0.34), 1.2, true)
-	draw_circle(center + Vector2(0.0, 5.0), 34.0, Color(PAPER_SHADOW, 0.94))
-	draw_circle(center, 33.0, Color(CREAM, 0.78))
-	draw_circle(center, 29.0, Color(BG, 1.0))
-	draw_circle(center, 24.0, Color(AMBER, 0.42 if enabled else 0.18))
-	draw_circle(center, 20.0, Color(AQUA, 0.64 if enabled else 0.38))
-	draw_arc(center, 20.0, PI, TAU, 24, Color(CREAM, 0.66), 2.2, true)
-	draw_line(center, center + Vector2(0.0, -17.0), active_color, 2.8, true)
-	draw_arc(center + Vector2(0.0, -39.0), 10.0, PI * 1.16, PI * 1.84, 12, Color(CREAM, 0.68), 1.8, true)
-	draw_arc(center + Vector2(0.0, -39.0), 17.0, PI * 1.19, PI * 1.81, 14, Color(CREAM, 0.46), 1.6, true)
-	draw_circle(center + Vector2(31.0, -26.0), 4.3, Color(PAPER_SHADOW, 0.92))
-	draw_circle(center + Vector2(31.0, -27.0), 3.2, CORAL if enabled else Color(CORAL, 0.52))
-	_draw_centered_label("RECALL", Vector2(center.x, center.y + 55.0), 11, Color(CREAM, 0.92))
+	var asset_rect := Rect2(center - Vector2(50.0, 50.0), Vector2(100.0, 100.0))
+	var tint := Color.WHITE if enabled else Color(0.72, 0.76, 0.74, 0.58)
+	draw_texture_rect(RECALL_KNOB_TEXTURE, asset_rect, false, tint)
+	_draw_centered_label("RECALL", Vector2(center.x, center.y + 55.0), 11, Color(CREAM, 0.92 if enabled else 0.46))
 
 
 func _regular_polygon(center: Vector2, radius: float, sides: int, rotation: float = 0.0) -> PackedVector2Array:
