@@ -1448,26 +1448,22 @@ func _draw_blocks() -> void:
 			if is_dense:
 				var inner_border := rect.grow(-(BLOCK_OUTLINE_WIDTH + 7.0))
 				draw_rect(inner_border, Color(CREAM, 0.72), false, 2.5, true)
-				for marker_x in [-1.0, 1.0]:
-					draw_colored_polygon(PackedVector2Array([
-						center + Vector2(marker_x * 18.0, -30.0),
-						center + Vector2(marker_x * 12.0, -24.0),
-						center + Vector2(marker_x * 18.0, -18.0),
-						center + Vector2(marker_x * 24.0, -24.0)
-					]), Color(CREAM, 0.78))
-				label_center.y += 5.0
+				var twin_center := center + Vector2(0.0, -21.0)
+				_draw_ellipse(twin_center, Vector2(27.0, 10.0), Color(CREAM, 0.72), 2.0, 28)
+				draw_line(twin_center + Vector2(-8.0, 0.0), twin_center + Vector2(8.0, 0.0), Color(CREAM, 0.58), 2.0, true)
+				for core_offset in [-13.0, 13.0]:
+					draw_circle(twin_center + Vector2(core_offset, 0.0), 7.0, AQUA)
+					draw_circle(twin_center + Vector2(core_offset, 0.0), 2.5, CREAM)
+				label_center.y += 15.0
 			elif is_regenerative:
-				draw_arc(center, 29.0, -PI * 0.82, PI * 0.18, 22, Color(CREAM, 0.58), 2.0, true)
-				draw_arc(center, 29.0, PI * 0.18, PI * 1.18, 22, Color(CREAM, 0.32), 2.0, true)
-				for marker in [Vector2(-25.0, -25.0), Vector2(25.0, -25.0), Vector2(-25.0, 25.0), Vector2(25.0, 25.0)]:
-					draw_circle(center + marker, 3.0, Color(CREAM, 0.64))
+				_draw_regeneration_orbit(center, Color(CREAM, 0.68))
 			elif is_black_hole:
+				draw_arc(center, 25.0, -PI * 0.10, PI * 1.38, 28, Color(CORAL, 0.72), 3.0, true)
+				draw_arc(center, 17.0, PI * 0.48, PI * 1.92, 24, Color(VOID_PURPLE, 0.88), 3.0, true)
 				_draw_black_hole_sides(rect, item.get("absorbing_sides", []))
 			elif is_phase:
-				var phase_mark_color := Color(CREAM, 0.62 * phase_alpha)
-				for offset in [-25.0, 0.0, 25.0]:
-					draw_circle(center + Vector2(offset, -30.0), 2.5, phase_mark_color)
-					draw_circle(center + Vector2(offset, 30.0), 2.5, phase_mark_color)
+				_draw_phase_emblem(center + Vector2(0.0, -21.0), phase_alpha)
+				label_center.y += 13.0
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -1492,36 +1488,39 @@ func _draw_blocks() -> void:
 				triangle_fill.lerp(CREAM, hit_flash_ratio * 0.32)
 			)
 			if is_phase:
-				for marker_index in range(3):
-					var marker_position := center + local_points[marker_index].lerp(centroid, 0.30)
-					draw_circle(marker_position, 2.7, Color(CREAM, 0.58 * phase_alpha))
+				_draw_phase_emblem(label_center + Vector2(0.0, -17.0), phase_alpha, 0.72)
+				label_center.y += 8.0
 		_draw_centered_label(hp, label_center, 24, label_color)
 
 
 func _draw_black_hole_sides(rect: Rect2, absorbing_sides: Array) -> void:
 	var center := rect.get_center()
-	var half_segment := 22.0
 	for side_value in absorbing_sides:
 		var side := String(side_value)
-		var start := Vector2.ZERO
-		var end := Vector2.ZERO
+		var arrow_tip := Vector2.ZERO
+		var inward := Vector2.ZERO
 		match side:
 			"left":
-				start = Vector2(rect.position.x + 8.0, center.y - half_segment)
-				end = Vector2(rect.position.x + 8.0, center.y + half_segment)
+				arrow_tip = Vector2(rect.position.x + 16.0, center.y)
+				inward = Vector2.RIGHT
 			"right":
-				start = Vector2(rect.end.x - 8.0, center.y - half_segment)
-				end = Vector2(rect.end.x - 8.0, center.y + half_segment)
+				arrow_tip = Vector2(rect.end.x - 16.0, center.y)
+				inward = Vector2.LEFT
 			"top":
-				start = Vector2(center.x - half_segment, rect.position.y + 8.0)
-				end = Vector2(center.x + half_segment, rect.position.y + 8.0)
+				arrow_tip = Vector2(center.x, rect.position.y + 16.0)
+				inward = Vector2.DOWN
 			"bottom":
-				start = Vector2(center.x - half_segment, rect.end.y - 8.0)
-				end = Vector2(center.x + half_segment, rect.end.y - 8.0)
+				arrow_tip = Vector2(center.x, rect.end.y - 16.0)
+				inward = Vector2.UP
 			_:
 				continue
-		draw_line(start, end, VOID_PURPLE, 10.0, true)
-		draw_line(start, end, VOID_DARK, 5.0, true)
+		var side_vector := inward.rotated(PI * 0.5)
+		draw_colored_polygon(PackedVector2Array([
+			arrow_tip + inward * 8.0,
+			arrow_tip - inward * 4.0 + side_vector * 6.0,
+			arrow_tip - inward * 4.0 - side_vector * 6.0
+		]), CORAL)
+		draw_circle(arrow_tip - inward * 10.0, 2.5, Color(CREAM, 0.62))
 
 
 func _draw_recall_button() -> void:
@@ -1545,15 +1544,58 @@ func _draw_centered_label(text: String, center: Vector2, font_size: int, color: 
 	draw_string(fallback_font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
+func _draw_ellipse(center: Vector2, radii: Vector2, color: Color, width: float, segments: int = 32) -> void:
+	for index in range(segments):
+		var first_angle := TAU * float(index) / float(segments)
+		var second_angle := TAU * float(index + 1) / float(segments)
+		var first := center + Vector2(cos(first_angle) * radii.x, sin(first_angle) * radii.y)
+		var second := center + Vector2(cos(second_angle) * radii.x, sin(second_angle) * radii.y)
+		draw_line(first, second, color, width, true)
+
+
+func _draw_regeneration_orbit(center: Vector2, color: Color) -> void:
+	for segment_index in range(3):
+		var start_angle := -PI * 0.5 + TAU * float(segment_index) / 3.0
+		var end_angle := start_angle + PI * 0.48
+		draw_arc(center, 29.0, start_angle, end_angle, 14, color, 2.5, true)
+		var endpoint := center + Vector2(cos(end_angle), sin(end_angle)) * 29.0
+		var tangent := Vector2(-sin(end_angle), cos(end_angle))
+		var side := tangent.rotated(PI * 0.5)
+		draw_colored_polygon(PackedVector2Array([
+			endpoint + tangent * 4.5,
+			endpoint - tangent * 3.5 + side * 3.5,
+			endpoint - tangent * 3.5 - side * 3.5
+		]), color)
+	draw_circle(center, 5.0, Color(AMBER, 0.72))
+
+
+func _draw_phase_emblem(center: Vector2, alpha: float, scale: float = 1.0) -> void:
+	var radius := 10.0 * scale
+	var left_color := Color(PHASE_BLUE, 0.78 * alpha)
+	var right_color := Color(AQUA, 0.68 * alpha)
+	draw_circle(center, radius, left_color)
+	var right_half := PackedVector2Array([center])
+	for index in range(9):
+		var angle := -PI * 0.5 + PI * float(index) / 8.0
+		right_half.append(center + Vector2(cos(angle), sin(angle)) * radius)
+	draw_colored_polygon(right_half, right_color)
+	draw_line(center + Vector2(0.0, -radius), center + Vector2(0.0, radius), Color(CREAM, 0.72 * alpha), 1.5, true)
+	draw_arc(center, radius + 5.0, -PI * 0.44, PI * 0.22, 10, Color(CREAM, 0.68 * alpha), 2.0, true)
+	draw_arc(center, radius + 5.0, PI * 0.56, PI * 1.22, 10, Color(CREAM, 0.68 * alpha), 2.0, true)
+
+
 func _draw_pickups() -> void:
 	for pickup in pickups:
 		if bool(pickup["collected"]):
 			continue
 		var center: Vector2 = pickup["position"]
-		draw_circle(center, PICKUP_RADIUS, Color(PANEL, 0.9))
-		draw_arc(center, PICKUP_RADIUS, 0.0, TAU, 32, AQUA, 4.0)
-		draw_line(center + Vector2(-8, 0), center + Vector2(8, 0), CREAM, 4.0, true)
-		draw_line(center + Vector2(0, -8), center + Vector2(0, 8), CREAM, 4.0, true)
+		draw_circle(center, PICKUP_RADIUS + 3.0, Color(PANEL, 0.92))
+		_draw_ellipse(center, Vector2(25.0, 11.0), Color(CREAM, 0.76), 2.5, 30)
+		draw_circle(center, 13.0, AQUA)
+		draw_circle(center + Vector2(-5.0, -5.0), 2.0, Color(PANEL, 0.42))
+		draw_circle(center + Vector2(6.0, 5.0), 2.5, Color(PANEL, 0.34))
+		draw_line(center + Vector2(-6.0, 0.0), center + Vector2(6.0, 0.0), CREAM, 3.5, true)
+		draw_line(center + Vector2(0.0, -6.0), center + Vector2(0.0, 6.0), CREAM, 3.5, true)
 
 
 func _draw_ion_powers() -> void:
@@ -1561,44 +1603,40 @@ func _draw_ion_powers() -> void:
 		var center: Vector2 = power["position"]
 		var color := CORAL if bool(power["activated"]) else ION_BLUE
 		var orientation := String(power["orientation"])
-		draw_circle(center, ION_BEAM_RADIUS, Color(PANEL, 0.92))
-		draw_arc(center, ION_BEAM_RADIUS, 0.0, TAU, 32, color, 4.0, true)
-		if orientation == "vertical":
-			draw_line(center + Vector2(0.0, -12.0), center + Vector2(0.0, 12.0), color, 5.0, true)
+		draw_circle(center, ION_BEAM_RADIUS + 2.0, Color(PANEL, 0.94))
+		draw_arc(center, 18.0, -PI * 0.42, PI * 0.42, 16, Color(CREAM, 0.72), 2.5, true)
+		draw_arc(center, 18.0, PI * 0.58, PI * 1.42, 16, Color(CREAM, 0.72), 2.5, true)
+		draw_circle(center, 8.0, Color(PHASE_BLUE, 0.72))
+		var beam_direction := Vector2.DOWN if orientation == "vertical" else Vector2.RIGHT
+		var beam_side := beam_direction.rotated(PI * 0.5)
+		draw_line(center - beam_direction * 24.0, center + beam_direction * 24.0, Color(PANEL, 0.96), 8.0, true)
+		draw_line(center - beam_direction * 24.0, center + beam_direction * 24.0, color, 4.0, true)
+		for sign_value: float in [-1.0, 1.0]:
+			var tip: Vector2 = center + beam_direction * 27.0 * sign_value
+			var backward: Vector2 = -beam_direction * sign_value
 			draw_colored_polygon(PackedVector2Array([
-				center + Vector2(0.0, -16.0),
-				center + Vector2(-6.0, -8.0),
-				center + Vector2(6.0, -8.0)
+				tip,
+				tip + backward * 8.0 + beam_side * 5.0,
+				tip + backward * 8.0 - beam_side * 5.0
 			]), color)
-			draw_colored_polygon(PackedVector2Array([
-				center + Vector2(0.0, 16.0),
-				center + Vector2(-6.0, 8.0),
-				center + Vector2(6.0, 8.0)
-			]), color)
-		else:
-			draw_line(center + Vector2(-12.0, 0.0), center + Vector2(12.0, 0.0), color, 5.0, true)
-			draw_colored_polygon(PackedVector2Array([
-				center + Vector2(-16.0, 0.0),
-				center + Vector2(-8.0, -6.0),
-				center + Vector2(-8.0, 6.0)
-			]), color)
-			draw_colored_polygon(PackedVector2Array([
-				center + Vector2(16.0, 0.0),
-				center + Vector2(8.0, -6.0),
-				center + Vector2(8.0, 6.0)
-			]), color)
+		draw_circle(center, 3.5, CREAM)
 
 
 func _draw_ghost_cores() -> void:
 	for core in ghost_cores:
 		var center: Vector2 = core["position"]
 		var color := Color(CORAL, 0.82) if bool(core["activated"]) else GHOST_PURPLE
-		draw_circle(center, GHOST_CORE_RADIUS, Color(PANEL, 0.90))
+		draw_circle(center, GHOST_CORE_RADIUS + 2.0, Color(PANEL, 0.92))
 		# Two concentric broken rings with opposite openings read as a deliberate
 		# portal; sharing the exact center prevents a false misalignment.
-		draw_arc(center, 15.0, -PI * 0.82, PI * 0.28, 22, color, 4.0, true)
-		draw_arc(center, 10.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 3.0, true)
-		draw_circle(center, 3.0, color)
+		draw_arc(center, 17.0, -PI * 0.82, PI * 0.28, 22, color, 3.5, true)
+		draw_arc(center, 11.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 2.5, true)
+		draw_colored_polygon(PackedVector2Array([
+			center + Vector2(0.0, -6.0),
+			center + Vector2(6.0, 0.0),
+			center + Vector2(0.0, 6.0),
+			center + Vector2(-6.0, 0.0)
+		]), Color(AQUA, 0.84))
 
 
 func _draw_supernova_cores() -> void:
@@ -1607,16 +1645,17 @@ func _draw_supernova_cores() -> void:
 		var center: Vector2 = core["position"]
 		var is_exhausted := remaining <= 0
 		var core_color := Color(MUTED, 0.72) if is_exhausted else NOVA_RED
-		draw_circle(center, SUPERNOVA_CORE_RADIUS, Color(PANEL, 0.94))
-		draw_arc(center, 18.0, -PI * 0.18, PI * 1.32, 28, core_color, 3.0, true)
-		draw_arc(center, 13.0, PI * 0.42, PI * 1.86, 24, NOVA_ORANGE if not is_exhausted else MUTED, 2.0, true)
+		draw_circle(center, SUPERNOVA_CORE_RADIUS + 2.0, Color(PANEL, 0.94))
+		draw_arc(center, 21.0, -PI * 0.40, PI * 0.38, 18, NOVA_ORANGE if not is_exhausted else MUTED, 2.5, true)
+		draw_arc(center, 21.0, PI * 0.60, PI * 1.38, 18, NOVA_ORANGE if not is_exhausted else MUTED, 2.5, true)
 
 		var star_points := PackedVector2Array()
-		for index in range(12):
-			var angle := -PI * 0.5 + TAU * float(index) / 12.0
-			var radius := 8.0 if index % 2 == 0 else 4.5
+		for index in range(16):
+			var angle := -PI * 0.5 + TAU * float(index) / 16.0
+			var radius := 15.0 if index % 2 == 0 else 7.0
 			star_points.append(center + Vector2(cos(angle), sin(angle)) * radius)
 		draw_colored_polygon(star_points, core_color)
+		draw_circle(center, 8.0, Color(NOVA_ORANGE, 0.92) if not is_exhausted else Color(MUTED, 0.82))
 		_draw_centered_label(str(remaining), center, 12, CREAM)
 
 		var pulse_progress := clampf(
