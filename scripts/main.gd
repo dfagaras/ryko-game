@@ -87,6 +87,7 @@ const PAPER_SHADOW := Color("#020b0e")
 
 # Full-cell paper illustrations. Geometry, collision borders and HP text remain
 # code-driven so the artwork can never alter gameplay alignment or readability.
+# Power pickups deliberately render smaller than blocks and keep open board space.
 const ICON_BLOCK_DENSE: Texture2D = preload("res://assets/icons/block_dense.png")
 const ICON_BLOCK_REGENERATIVE: Texture2D = preload("res://assets/icons/block_regenerative.png")
 const ICON_BLOCK_PHASE: Texture2D = preload("res://assets/icons/block_phase.png")
