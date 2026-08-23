@@ -132,6 +132,10 @@ const LAUNCHER_TEXTURE: Texture2D = preload("res://assets/launcher/retro_cannon.
 const MENU_SPEAKER_TEXTURE: Texture2D = preload("res://assets/ui/menu_speaker_2d.png")
 const RECALL_KNOB_TEXTURE: Texture2D = preload("res://assets/ui/recall_knob_2d.png")
 const RADIO_WAVEBOARD_TEXTURE: Texture2D = preload("res://assets/ui/radio_waveboard_2d.png")
+# The generated texture includes transparent presentation padding. Rendering
+# only the actual faceplate keeps the approved radio footprint unchanged while
+# allowing the oscilloscope to use the full rectangle allocated by the UI.
+const RADIO_WAVEBOARD_SOURCE_RECT := Rect2(25.0, 102.0, 993.0, 289.0)
 const BACKGROUND_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/backgrounds/star_chart.jpg"),
 	preload("res://assets/backgrounds/mission_log.jpg"),
@@ -2224,7 +2228,7 @@ func _draw_radio_console(rect: Rect2) -> void:
 	# Keep the exact existing scope rectangle; the static housing is now the
 	# approved 2D asset while waveform, needle and labels remain interactive.
 	var scope_outer := _radio_scope_outer_rect()
-	draw_texture_rect(RADIO_WAVEBOARD_TEXTURE, scope_outer, false)
+	draw_texture_rect_region(RADIO_WAVEBOARD_TEXTURE, scope_outer, RADIO_WAVEBOARD_SOURCE_RECT)
 	var wave_rect := _radio_speed_track_rect()
 	_draw_radio_waveform(wave_rect)
 	_draw_radio_speed_control(scope_outer, wave_rect)
@@ -2277,7 +2281,7 @@ func _draw_radio_speed_control(scope_rect: Rect2, wave_rect: Rect2) -> void:
 		var ratio := _speed_position_for_index(speed_index)
 		var x := lerpf(wave_rect.position.x, wave_rect.end.x, ratio)
 		draw_line(Vector2(x, wave_rect.end.y + 2.0), Vector2(x, wave_rect.end.y + 7.0), Color(AQUA, 0.72), 1.5, true)
-		_draw_centered_label(BALL_SPEED_LABELS[speed_index], Vector2(x, wave_rect.end.y + 14.0), 7, Color(AQUA, 0.76))
+		_draw_centered_label(BALL_SPEED_LABELS[speed_index], Vector2(x, wave_rect.end.y + 15.0), 11, Color(AQUA, 0.92))
 
 	var needle_x := lerpf(wave_rect.position.x, wave_rect.end.x, speed_needle_position)
 	var needle_top := wave_rect.position.y - 1.0
@@ -2289,7 +2293,7 @@ func _draw_radio_speed_control(scope_rect: Rect2, wave_rect: Rect2) -> void:
 	draw_circle(Vector2(needle_x, needle_bottom), 3.2, Color(CORAL, 0.88))
 
 	var speed_text := "BALL SPEED %sX" % String.num(ball_speed_multiplier, 2)
-	_draw_centered_label(speed_text, Vector2(scope_rect.get_center().x, scope_rect.end.y - 6.0), 8, Color(AQUA, 0.90))
+	_draw_centered_label(speed_text, Vector2(scope_rect.get_center().x, scope_rect.end.y - 7.0), 10, Color(AQUA, 0.96))
 
 
 func _draw_radio_scope_grid(rect: Rect2) -> void:
