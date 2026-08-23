@@ -85,6 +85,17 @@ const CREAM := Color("#f2e3bb")
 const PAPER_FIBER := Color("#b9a984")
 const PAPER_SHADOW := Color("#020b0e")
 
+# Full-cell paper illustrations. Geometry, collision borders and HP text remain
+# code-driven so the artwork can never alter gameplay alignment or readability.
+const ICON_BLOCK_DENSE: Texture2D = preload("res://assets/icons/block_dense.png")
+const ICON_BLOCK_REGENERATIVE: Texture2D = preload("res://assets/icons/block_regenerative.png")
+const ICON_BLOCK_PHASE: Texture2D = preload("res://assets/icons/block_phase.png")
+const ICON_BLOCK_BLACK_HOLE: Texture2D = preload("res://assets/icons/block_black_hole.png")
+const ICON_POWER_PLUS_ONE: Texture2D = preload("res://assets/icons/power_plus_one.png")
+const ICON_POWER_ION: Texture2D = preload("res://assets/icons/power_ion.png")
+const ICON_POWER_GHOST: Texture2D = preload("res://assets/icons/power_ghost.png")
+const ICON_POWER_SUPERNOVA: Texture2D = preload("res://assets/icons/power_supernova.png")
+
 @export var fixed_generation_seed: int = 0
 
 var state := TurnState.AIMING
@@ -256,11 +267,11 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	if not black_hole_candidates.is_empty() and rng.randf() < _black_hole_block_spawn_chance():
 		black_hole_index = black_hole_candidates[rng.randi_range(0, black_hole_candidates.size() - 1)]
 
-	# Phase blocks may use either base shape, but cannot overlap another special
-	# variant. They spawn active and alternate on every later row descent.
+	# Every powered block is square-only. Triangles deliberately remain normal
+	# blocks, which keeps their silhouette and HP placement completely clean.
 	var phase_index := -1
 	var phase_candidates: Array[int] = []
-	for index in range(block_count):
+	for index in square_indices:
 		if index != dense_index and index != regenerative_index and index != black_hole_index:
 			phase_candidates.append(index)
 	if not phase_candidates.is_empty() and rng.randf() < _phase_block_spawn_chance():
@@ -1446,24 +1457,14 @@ func _draw_blocks() -> void:
 				true
 			)
 			if is_dense:
-				var inner_border := rect.grow(-(BLOCK_OUTLINE_WIDTH + 7.0))
-				draw_rect(inner_border, Color(CREAM, 0.72), false, 2.5, true)
-				var twin_center := center + Vector2(0.0, -21.0)
-				_draw_ellipse(twin_center, Vector2(27.0, 10.0), Color(CREAM, 0.72), 2.0, 28)
-				draw_line(twin_center + Vector2(-8.0, 0.0), twin_center + Vector2(8.0, 0.0), Color(CREAM, 0.58), 2.0, true)
-				for core_offset in [-13.0, 13.0]:
-					draw_circle(twin_center + Vector2(core_offset, 0.0), 7.0, AQUA)
-					draw_circle(twin_center + Vector2(core_offset, 0.0), 2.5, CREAM)
-				label_center.y += 15.0
+				_draw_cell_texture(ICON_BLOCK_DENSE, rect, 0.88)
 			elif is_regenerative:
-				_draw_regeneration_orbit(center, Color(CREAM, 0.68))
+				_draw_cell_texture(ICON_BLOCK_REGENERATIVE, rect, 0.86)
 			elif is_black_hole:
-				draw_arc(center, 25.0, -PI * 0.10, PI * 1.38, 28, Color(CORAL, 0.72), 3.0, true)
-				draw_arc(center, 17.0, PI * 0.48, PI * 1.92, 24, Color(VOID_PURPLE, 0.88), 3.0, true)
+				_draw_cell_texture(ICON_BLOCK_BLACK_HOLE, rect, 0.84)
 				_draw_black_hole_sides(rect, item.get("absorbing_sides", []))
 			elif is_phase:
-				_draw_phase_emblem(center + Vector2(0.0, -21.0), phase_alpha)
-				label_center.y += 13.0
+				_draw_cell_texture(ICON_BLOCK_PHASE, rect, 0.78 * phase_alpha)
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -1477,20 +1478,19 @@ func _draw_blocks() -> void:
 			var inner_points := PackedVector2Array()
 			for point in inner_local_points:
 				inner_points.append(center + point)
-			var triangle_border := Color(PHASE_BLUE, phase_alpha) if is_phase else CORAL
+			var triangle_border := CORAL
 			triangle_border = triangle_border.lerp(CREAM, hit_flash_ratio)
 			var triangle_fill := PANEL.lerp(triangle_border, 0.18)
-			if is_phase and not phase_active:
-				triangle_fill = PLAYFIELD_BG.lerp(PHASE_BLUE, 0.08)
 			draw_colored_polygon(points, triangle_border)
 			draw_colored_polygon(
 				inner_points,
 				triangle_fill.lerp(CREAM, hit_flash_ratio * 0.32)
 			)
-			if is_phase:
-				_draw_phase_emblem(label_center + Vector2(0.0, -17.0), phase_alpha, 0.72)
-				label_center.y += 8.0
 		_draw_centered_label(hp, label_center, 24, label_color)
+
+
+func _draw_cell_texture(texture: Texture2D, rect: Rect2, alpha: float = 1.0) -> void:
+	draw_texture_rect(texture, rect, false, Color(1.0, 1.0, 1.0, alpha))
 
 
 func _draw_black_hole_sides(rect: Rect2, absorbing_sides: Array) -> void:
@@ -1589,54 +1589,32 @@ func _draw_pickups() -> void:
 		if bool(pickup["collected"]):
 			continue
 		var center: Vector2 = pickup["position"]
-		draw_circle(center, PICKUP_RADIUS + 3.0, Color(PANEL, 0.92))
-		_draw_ellipse(center, Vector2(25.0, 11.0), Color(CREAM, 0.76), 2.5, 30)
-		draw_circle(center, 13.0, AQUA)
-		draw_circle(center + Vector2(-5.0, -5.0), 2.0, Color(PANEL, 0.42))
-		draw_circle(center + Vector2(6.0, 5.0), 2.5, Color(PANEL, 0.34))
-		draw_line(center + Vector2(-6.0, 0.0), center + Vector2(6.0, 0.0), CREAM, 3.5, true)
-		draw_line(center + Vector2(0.0, -6.0), center + Vector2(0.0, 6.0), CREAM, 3.5, true)
+		var icon_rect := Rect2(center - Vector2(26.0, 26.0), Vector2(52.0, 52.0))
+		_draw_cell_texture(ICON_POWER_PLUS_ONE, icon_rect, 0.90)
+		# The exact text stays code-rendered; generated art never controls gameplay copy.
+		draw_circle(center, 14.0, Color(PANEL, 0.96))
+		_draw_centered_label("+1", center, 17, CREAM)
 
 
 func _draw_ion_powers() -> void:
 	for power in ion_powers:
 		var center: Vector2 = power["position"]
-		var color := CORAL if bool(power["activated"]) else ION_BLUE
 		var orientation := String(power["orientation"])
-		draw_circle(center, ION_BEAM_RADIUS + 2.0, Color(PANEL, 0.94))
-		draw_arc(center, 18.0, -PI * 0.42, PI * 0.42, 16, Color(CREAM, 0.72), 2.5, true)
-		draw_arc(center, 18.0, PI * 0.58, PI * 1.42, 16, Color(CREAM, 0.72), 2.5, true)
-		draw_circle(center, 8.0, Color(PHASE_BLUE, 0.72))
-		var beam_direction := Vector2.DOWN if orientation == "vertical" else Vector2.RIGHT
-		var beam_side := beam_direction.rotated(PI * 0.5)
-		draw_line(center - beam_direction * 24.0, center + beam_direction * 24.0, Color(PANEL, 0.96), 8.0, true)
-		draw_line(center - beam_direction * 24.0, center + beam_direction * 24.0, color, 4.0, true)
-		for sign_value: float in [-1.0, 1.0]:
-			var tip: Vector2 = center + beam_direction * 27.0 * sign_value
-			var backward: Vector2 = -beam_direction * sign_value
-			draw_colored_polygon(PackedVector2Array([
-				tip,
-				tip + backward * 8.0 + beam_side * 5.0,
-				tip + backward * 8.0 - beam_side * 5.0
-			]), color)
-		draw_circle(center, 3.5, CREAM)
+		var alpha := 0.48 if bool(power["activated"]) else 0.90
+		draw_set_transform(center, PI * 0.5 if orientation == "vertical" else 0.0, Vector2.ONE)
+		_draw_cell_texture(ICON_POWER_ION, Rect2(Vector2(-26.0, -26.0), Vector2(52.0, 52.0)), alpha)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_ghost_cores() -> void:
 	for core in ghost_cores:
 		var center: Vector2 = core["position"]
-		var color := Color(CORAL, 0.82) if bool(core["activated"]) else GHOST_PURPLE
-		draw_circle(center, GHOST_CORE_RADIUS + 2.0, Color(PANEL, 0.92))
-		# Two concentric broken rings with opposite openings read as a deliberate
-		# portal; sharing the exact center prevents a false misalignment.
-		draw_arc(center, 17.0, -PI * 0.82, PI * 0.28, 22, color, 3.5, true)
-		draw_arc(center, 11.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 2.5, true)
-		draw_colored_polygon(PackedVector2Array([
-			center + Vector2(0.0, -6.0),
-			center + Vector2(6.0, 0.0),
-			center + Vector2(0.0, 6.0),
-			center + Vector2(-6.0, 0.0)
-		]), Color(AQUA, 0.84))
+		var alpha := 0.48 if bool(core["activated"]) else 0.90
+		_draw_cell_texture(
+			ICON_POWER_GHOST,
+			Rect2(center - Vector2(26.0, 26.0), Vector2(52.0, 52.0)),
+			alpha
+		)
 
 
 func _draw_supernova_cores() -> void:
@@ -1644,18 +1622,12 @@ func _draw_supernova_cores() -> void:
 	for core in supernova_cores:
 		var center: Vector2 = core["position"]
 		var is_exhausted := remaining <= 0
-		var core_color := Color(MUTED, 0.72) if is_exhausted else NOVA_RED
-		draw_circle(center, SUPERNOVA_CORE_RADIUS + 2.0, Color(PANEL, 0.94))
-		draw_arc(center, 21.0, -PI * 0.40, PI * 0.38, 18, NOVA_ORANGE if not is_exhausted else MUTED, 2.5, true)
-		draw_arc(center, 21.0, PI * 0.60, PI * 1.38, 18, NOVA_ORANGE if not is_exhausted else MUTED, 2.5, true)
-
-		var star_points := PackedVector2Array()
-		for index in range(16):
-			var angle := -PI * 0.5 + TAU * float(index) / 16.0
-			var radius := 15.0 if index % 2 == 0 else 7.0
-			star_points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-		draw_colored_polygon(star_points, core_color)
-		draw_circle(center, 8.0, Color(NOVA_ORANGE, 0.92) if not is_exhausted else Color(MUTED, 0.82))
+		_draw_cell_texture(
+			ICON_POWER_SUPERNOVA,
+			Rect2(center - Vector2(26.0, 26.0), Vector2(52.0, 52.0)),
+			0.44 if is_exhausted else 0.92
+		)
+		draw_circle(center, 11.0, Color(PANEL, 0.96))
 		_draw_centered_label(str(remaining), center, 12, CREAM)
 
 		var pulse_progress := clampf(
