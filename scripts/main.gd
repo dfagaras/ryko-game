@@ -1891,10 +1891,7 @@ func _draw_panel_frame(rect: Rect2, fill: Color, border: Color, width: float) ->
 
 func _draw_footer() -> void:
 	var footer := Rect2(BOARD_LEFT, 1110.0, BOARD_RIGHT - BOARD_LEFT, 152.0)
-	_draw_panel_frame(footer, Color(PANEL, 0.99), Color(CREAM, 0.72), 3.0)
-	_draw_footer_menu_control()
-	_draw_radio_console(Rect2(154.0, 1122.0, 412.0, 120.0))
-	_draw_footer_recall_control()
+	_draw_radio_console(footer)
 
 
 func _draw_footer_menu_control() -> void:
@@ -1935,51 +1932,101 @@ func _draw_console_button_base(center: Vector2, enabled: bool, aqua_ring: bool) 
 
 
 func _draw_radio_console(rect: Rect2) -> void:
-	# Recessed metal faceplate with a second inner lip and four fasteners.
-	draw_rect(Rect2(rect.position + Vector2(0.0, 3.0), rect.size), Color(PAPER_SHADOW, 0.90), true)
-	draw_rect(rect, Color(CREAM, 0.66), true)
-	draw_rect(rect.grow(-3.0), Color(PANEL, 1.0), true)
-	draw_rect(rect.grow(-8.0), Color(AMBER, 0.25), false, 1.3, true)
-	for screw in [rect.position + Vector2(11, 11), Vector2(rect.end.x - 11, rect.position.y + 11), Vector2(rect.position.x + 11, rect.end.y - 11), rect.end - Vector2(11, 11)]:
-		draw_circle(screw, 4.2, Color(CREAM, 0.72))
-		draw_circle(screw, 2.8, Color(PAPER_SHADOW, 0.90))
-		draw_line(screw - Vector2(2, 2), screw + Vector2(2, 2), Color(CREAM, 0.56), 1.0, true)
-	_draw_centered_label("RADIO", Vector2(rect.get_center().x, rect.position.y + 16.0), 11, Color(CREAM, 0.88))
-	# Octagonal speaker housing, matching the industrial radio reference.
-	var speaker_center := Vector2(rect.position.x + 49.0, rect.position.y + 66.0)
-	var speaker_outer := _regular_polygon(speaker_center, 32.0, 8, PI / 8.0)
-	var speaker_inner := _regular_polygon(speaker_center, 27.0, 8, PI / 8.0)
-	draw_colored_polygon(speaker_outer, Color(CREAM, 0.62))
-	draw_colored_polygon(speaker_inner, Color(BG, 1.0))
-	for y_offset in [-17.0, -11.0, -5.0, 1.0, 7.0, 13.0]:
-		var half_width := sqrt(maxf(0.0, 23.0 * 23.0 - y_offset * y_offset))
-		draw_line(speaker_center + Vector2(-half_width, y_offset + 1.5), speaker_center + Vector2(half_width, y_offset + 1.5), Color(PAPER_SHADOW, 0.92), 3.8, true)
-		draw_line(speaker_center + Vector2(-half_width, y_offset), speaker_center + Vector2(half_width, y_offset), Color(AQUA, 0.42), 1.5, true)
-	var wave_rect := Rect2(rect.position + Vector2(91.0, 38.0), Vector2(232.0, 52.0))
-	draw_rect(wave_rect.grow(4.0), Color(CREAM, 0.38), true)
-	draw_rect(wave_rect.grow(1.5), Color(BG, 1.0), true)
+	# One continuous radio faceplate. The shadow, double lip and corner screws
+	# mirror the approved concept instead of looking like separate UI cards.
+	_draw_rounded_panel(Rect2(rect.position + Vector2(0.0, 5.0), rect.size), Color(PAPER_SHADOW, 0.90), Color(PAPER_SHADOW, 0.90), 0.0, 8.0)
+	_draw_rounded_panel(rect, Color(PANEL, 1.0), Color(CREAM, 0.82), 3.0, 8.0)
+	_draw_rounded_panel(rect.grow(-7.0), Color(PANEL, 1.0), Color(AMBER, 0.26), 1.0, 5.0)
+	for screw in [rect.position + Vector2(13, 13), Vector2(rect.end.x - 13, rect.position.y + 13), Vector2(rect.position.x + 13, rect.end.y - 13), rect.end - Vector2(13, 13)]:
+		_draw_machine_screw(screw, 6.0)
+
+	# Decorative radio signature: line-dot-circle RADIO circle-dot-line.
+	var title_y := rect.position.y + 19.0
+	_draw_centered_label("RADIO", Vector2(rect.get_center().x, title_y), 12, Color(CREAM, 0.94))
+	draw_line(Vector2(rect.get_center().x - 112.0, title_y), Vector2(rect.get_center().x - 70.0, title_y), Color(CREAM, 0.72), 1.5, true)
+	draw_circle(Vector2(rect.get_center().x - 61.0, title_y), 2.2, Color(AMBER, 0.88))
+	draw_arc(Vector2(rect.get_center().x - 50.0, title_y), 5.0, 0.0, TAU, 18, Color(CREAM, 0.76), 1.4, true)
+	draw_arc(Vector2(rect.get_center().x + 50.0, title_y), 5.0, 0.0, TAU, 18, Color(CREAM, 0.76), 1.4, true)
+	draw_circle(Vector2(rect.get_center().x + 61.0, title_y), 2.2, Color(AMBER, 0.88))
+	draw_line(Vector2(rect.get_center().x + 70.0, title_y), Vector2(rect.get_center().x + 112.0, title_y), Color(CREAM, 0.72), 1.5, true)
+
+	_draw_integrated_menu_speaker(Vector2(rect.position.x + 64.0, rect.position.y + 69.0))
+
+	# The oscilloscope now owns nearly all space between the two physical controls.
+	var scope_outer := Rect2(rect.position + Vector2(119.0, 37.0), Vector2(rect.size.x - 238.0, 92.0))
+	_draw_rounded_panel(Rect2(scope_outer.position + Vector2(0.0, 3.0), scope_outer.size), Color(PAPER_SHADOW, 0.88), Color(PAPER_SHADOW, 0.88), 0.0, 14.0)
+	_draw_rounded_panel(scope_outer, Color(BG, 1.0), Color(CREAM, 0.60), 2.0, 14.0)
+	_draw_rounded_panel(scope_outer.grow(-5.0), Color(BG, 0.98), Color(AMBER, 0.17), 1.0, 10.0)
+	var wave_rect := Rect2(scope_outer.position + Vector2(13.0, 11.0), Vector2(scope_outer.size.x - 26.0, 53.0))
 	_draw_radio_scope_grid(wave_rect)
 	_draw_radio_waveform(wave_rect)
 	var status := "READY"
 	if radio_clear_elapsed < RADIO_CLEAR_DURATION:
 		status = "FIELD CLEAR"
 	elif state == TurnState.FIRING:
-		status = "%02d / %02d SIGNALS" % [launched_ball_count, ball_count]
+		status = "%02d / %02d LAUNCHED" % [launched_ball_count, ball_count]
 	elif state == TurnState.ADVANCING:
 		status = "ROW SHIFT"
-	_draw_centered_label(status, Vector2(wave_rect.get_center().x, rect.position.y + 103.0), 9, Color(AQUA, 0.72))
-	# Reserved physical control: visible and tactile, intentionally non-functional.
-	var knob_center := Vector2(rect.end.x - 39.0, rect.position.y + 67.0)
-	draw_circle(knob_center + Vector2(0.0, 4.0), 27.0, Color(PAPER_SHADOW, 0.90))
-	draw_circle(knob_center, 26.0, Color(AMBER, 0.72))
-	draw_circle(knob_center, 22.0, Color(BG, 1.0))
-	draw_circle(knob_center, 17.0, Color(AQUA, 0.56))
-	draw_arc(knob_center, 17.0, PI, TAU, 24, Color(CREAM, 0.62), 2.0, true)
-	draw_line(knob_center, knob_center + Vector2(0.0, -14.0), Color(CREAM, 0.82), 2.4, true)
-	# Radio-wave marks make this read as a receiver control, not a generic circle.
-	draw_arc(knob_center + Vector2(0.0, -25.0), 9.0, PI * 1.17, PI * 1.83, 12, Color(AMBER, 0.76), 1.8, true)
-	draw_arc(knob_center + Vector2(0.0, -25.0), 15.0, PI * 1.20, PI * 1.80, 14, Color(AMBER, 0.54), 1.6, true)
-	draw_circle(knob_center + Vector2(21.0, -25.0), 3.2, Color(CORAL, 0.92))
+	_draw_centered_label(status, Vector2(wave_rect.get_center().x, scope_outer.end.y - 13.0), 9, Color(AQUA, 0.82))
+	_draw_integrated_recall_knob(Vector2(rect.end.x - 64.0, rect.position.y + 69.0))
+
+
+func _draw_rounded_panel(rect: Rect2, fill: Color, border: Color, width: float, radius: float) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.set_border_width_all(int(round(width)))
+	style.set_corner_radius_all(int(round(radius)))
+	draw_style_box(style, rect)
+
+
+func _draw_machine_screw(center: Vector2, radius: float) -> void:
+	draw_circle(center + Vector2(0.0, 1.5), radius + 1.0, Color(PAPER_SHADOW, 0.88))
+	draw_circle(center, radius, Color(CREAM, 0.76))
+	draw_circle(center, radius - 2.0, Color(AMBER, 0.34))
+	draw_line(center - Vector2(2.5, 2.5), center + Vector2(2.5, 2.5), Color(PAPER_SHADOW, 0.92), 1.4, true)
+	draw_line(center + Vector2(2.5, -2.5), center - Vector2(2.5, -2.5), Color(PAPER_SHADOW, 0.72), 1.0, true)
+
+
+func _draw_integrated_menu_speaker(center: Vector2) -> void:
+	var shadow := _regular_polygon(center + Vector2(0.0, 4.0), 43.0, 8, PI / 8.0)
+	var outer := _regular_polygon(center, 43.0, 8, PI / 8.0)
+	var lip := _regular_polygon(center, 38.0, 8, PI / 8.0)
+	var well := _regular_polygon(center, 33.0, 8, PI / 8.0)
+	draw_colored_polygon(shadow, Color(PAPER_SHADOW, 0.92))
+	draw_colored_polygon(outer, Color(CREAM, 0.78))
+	draw_colored_polygon(lip, Color(AMBER, 0.30))
+	draw_colored_polygon(well, Color(BG, 1.0))
+	# Four tiny housing screws are deliberately separate from the footer screws.
+	for offset in [Vector2(-25, -23), Vector2(25, -23), Vector2(-25, 23), Vector2(25, 23)]:
+		_draw_machine_screw(center + offset, 2.7)
+	for y_offset in [-20.0, -14.0, -8.0, -2.0, 4.0, 10.0, 16.0]:
+		var half_width := sqrt(maxf(0.0, 27.0 * 27.0 - y_offset * y_offset))
+		draw_line(center + Vector2(-half_width, y_offset + 2.0), center + Vector2(half_width, y_offset + 2.0), Color(PAPER_SHADOW, 0.96), 5.0, true)
+		draw_line(center + Vector2(-half_width, y_offset), center + Vector2(half_width, y_offset), Color(AQUA, 0.46), 1.6, true)
+	_draw_centered_label("MENU", Vector2(center.x, center.y + 55.0), 11, Color(CREAM, 0.92))
+
+
+func _draw_integrated_recall_knob(center: Vector2) -> void:
+	var enabled := state == TurnState.FIRING
+	var active_color := AMBER if enabled else Color(CREAM, 0.58)
+	# Dial ticks, receiver arcs and a tactile multi-layer knob.
+	for index in range(12):
+		var angle := TAU * float(index) / 12.0
+		var direction := Vector2(cos(angle), sin(angle))
+		draw_line(center + direction * 34.0, center + direction * (37.0 if index % 3 == 0 else 35.5), Color(CREAM, 0.34), 1.2, true)
+	draw_circle(center + Vector2(0.0, 5.0), 34.0, Color(PAPER_SHADOW, 0.94))
+	draw_circle(center, 33.0, Color(CREAM, 0.78))
+	draw_circle(center, 29.0, Color(BG, 1.0))
+	draw_circle(center, 24.0, Color(AMBER, 0.42 if enabled else 0.18))
+	draw_circle(center, 20.0, Color(AQUA, 0.64 if enabled else 0.38))
+	draw_arc(center, 20.0, PI, TAU, 24, Color(CREAM, 0.66), 2.2, true)
+	draw_line(center, center + Vector2(0.0, -17.0), active_color, 2.8, true)
+	draw_arc(center + Vector2(0.0, -39.0), 10.0, PI * 1.16, PI * 1.84, 12, Color(CREAM, 0.68), 1.8, true)
+	draw_arc(center + Vector2(0.0, -39.0), 17.0, PI * 1.19, PI * 1.81, 14, Color(CREAM, 0.46), 1.6, true)
+	draw_circle(center + Vector2(31.0, -26.0), 4.3, Color(PAPER_SHADOW, 0.92))
+	draw_circle(center + Vector2(31.0, -27.0), 3.2, CORAL if enabled else Color(CORAL, 0.52))
+	_draw_centered_label("RECALL", Vector2(center.x, center.y + 55.0), 11, Color(CREAM, 0.92))
 
 
 func _regular_polygon(center: Vector2, radius: float, sides: int, rotation: float = 0.0) -> PackedVector2Array:
