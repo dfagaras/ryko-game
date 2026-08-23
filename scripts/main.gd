@@ -66,6 +66,8 @@ const SUPERNOVA_EFFECT_DURATION := 0.36
 const BLOCK_HIT_FLASH_DURATION := 0.12
 const RADIO_CLEAR_DURATION := 0.92
 const RADIO_SAMPLE_RATE := 22050
+const BLOCK_HIT_DURATION := 0.085
+const BLOCK_HIT_PLAYER_COUNT := 6
 const SETTINGS_PATH := "user://ryko_settings.cfg"
 const BACKGROUND_NAMES := [
 	"STAR CHART",
@@ -158,6 +160,8 @@ var radio_phase := 0.0
 var radio_clear_elapsed := RADIO_CLEAR_DURATION
 var field_clear_triggered := false
 var radio_audio_player: AudioStreamPlayer
+var block_hit_audio_players: Array[AudioStreamPlayer] = []
+var block_hit_audio_cursor := 0
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
@@ -177,6 +181,14 @@ func _create_radio_audio() -> void:
 	radio_audio_player.volume_db = -8.0
 	radio_audio_player.stream = _build_happy_radio_chirp()
 	add_child(radio_audio_player)
+	var hit_stream := _build_block_hit_sound()
+	for index in range(BLOCK_HIT_PLAYER_COUNT):
+		var player := AudioStreamPlayer.new()
+		player.name = "BlockHit%02d" % index
+		player.volume_db = -17.0
+		player.stream = hit_stream
+		block_hit_audio_players.append(player)
+		add_child(player)
 
 
 func _build_happy_radio_chirp() -> AudioStreamWAV:
@@ -199,17 +211,54 @@ func _build_happy_radio_chirp() -> AudioStreamWAV:
 func _happy_radio_sample(time: float) -> float:
 	if time < 0.0 or time >= RADIO_CLEAR_DURATION:
 		return 0.0
-	var step_length := 0.115
-	var step := mini(6, int(time / step_length))
+	var step_length := 0.18
+	var step := mini(4, int(time / step_length))
 	var local_time := fposmod(time, step_length)
-	var frequencies := [430.0, 610.0, 790.0, 560.0, 880.0, 1040.0, 720.0]
-	var envelope := sin(clampf(local_time / step_length, 0.0, 1.0) * PI)
-	var fade_out := clampf((RADIO_CLEAR_DURATION - time) / 0.18, 0.0, 1.0)
-	var phase := TAU * float(frequencies[step]) * time
-	# A soft square-wave overtone gives Ryko a strange radio voice without
-	# imitating an existing film character sound.
-	var carrier := sin(phase) * 0.72 + signf(sin(phase * 0.5)) * 0.16
-	return carrier * envelope * fade_out
+	var frequencies := [480.0, 620.0, 750.0, 880.0, 700.0]
+	var normalized_note := clampf(local_time / step_length, 0.0, 1.0)
+	var envelope := pow(sin(normalized_note * PI), 0.72)
+	var fade_out := clampf((RADIO_CLEAR_DURATION - time) / 0.15, 0.0, 1.0)
+	var vibrato := sin(TAU * 5.2 * local_time) * 0.018
+	var frequency := float(frequencies[step]) * (1.0 + vibrato)
+	var phase := TAU * frequency * local_time
+	# Rounded sine harmonics make the voice warm and cute. A subtle amplitude
+	# tremolo keeps it robotic without the harsh square-wave character.
+	var carrier := sin(phase) * 0.76 + sin(phase * 0.5) * 0.17 + sin(phase * 2.0) * 0.05
+	var robot_tremolo := 0.88 + sin(TAU * 13.0 * time) * 0.12
+	return carrier * envelope * fade_out * robot_tremolo * 0.82
+
+
+func _build_block_hit_sound() -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = RADIO_SAMPLE_RATE
+	stream.stereo = false
+	stream.loop_mode = AudioStreamWAV.LOOP_DISABLED
+	var sample_count := int(BLOCK_HIT_DURATION * RADIO_SAMPLE_RATE)
+	var data := PackedByteArray()
+	data.resize(sample_count * 2)
+	for sample_index in range(sample_count):
+		var time := float(sample_index) / float(RADIO_SAMPLE_RATE)
+		var attack := clampf(time / 0.004, 0.0, 1.0)
+		var decay := exp(-time * 42.0)
+		# A tiny downward pitch glide makes a soft cosmic pluck instead of a click.
+		var phase := TAU * (840.0 * time - 1250.0 * time * time)
+		var tone := sin(phase) * 0.72 + sin(phase * 1.5) * 0.16 + sin(phase * 0.5) * 0.10
+		var sample := tone * attack * decay * 0.72
+		data.encode_s16(sample_index * 2, int(clampf(sample, -0.90, 0.90) * 32767.0))
+	stream.data = data
+	return stream
+
+
+func _play_block_hit_sound() -> void:
+	if block_hit_audio_players.is_empty():
+		return
+	var player := block_hit_audio_players[block_hit_audio_cursor]
+	var pitch_variations := [0.96, 1.00, 1.04, 0.98, 1.02, 1.06]
+	player.pitch_scale = float(pitch_variations[block_hit_audio_cursor % pitch_variations.size()])
+	player.stop()
+	player.play()
+	block_hit_audio_cursor = (block_hit_audio_cursor + 1) % block_hit_audio_players.size()
 
 
 func _update_radio(delta: float) -> void:
@@ -961,6 +1010,7 @@ func _hit_block(body: StaticBody2D) -> void:
 	if not is_instance_valid(block_body):
 		return
 	_pulse_radio(0.28)
+	_play_block_hit_sound()
 	item["hit_flash"] = BLOCK_HIT_FLASH_DURATION
 	item["hp"] = int(item["hp"]) - 1
 	if int(item["hp"]) <= 0:
