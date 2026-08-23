@@ -71,8 +71,10 @@ const BACKGROUND_NAMES := [
 	"COSMIC BLUEPRINT",
 	"ALIEN DOODLES",
 	"PAPER NEBULA",
-	"SIGNAL NAVIGATION"
+	"SIGNAL NAVIGATION",
+	"NEUTRAL PAPER"
 ]
+const BACKGROUND_DISPLAY_ORDER := [6, 0, 1, 2, 3, 4, 5]
 
 const BG := Color("#071419")
 const PLAYFIELD_BG := Color("#10262b")
@@ -105,6 +107,7 @@ const ICON_POWER_PLUS_ONE: Texture2D = preload("res://assets/icons/power_plus_on
 const ICON_POWER_ION: Texture2D = preload("res://assets/icons/power_ion.png")
 const ICON_POWER_GHOST: Texture2D = preload("res://assets/icons/power_ghost.png")
 const ICON_POWER_SUPERNOVA: Texture2D = preload("res://assets/icons/power_supernova.png")
+const LAUNCHER_TEXTURE: Texture2D = preload("res://assets/launcher/retro_cannon.png")
 const BACKGROUND_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/backgrounds/star_chart.jpg"),
 	preload("res://assets/backgrounds/mission_log.jpg"),
@@ -564,26 +567,34 @@ func _menu_button_rect() -> Rect2:
 	return Rect2(Vector2(28.0, H - 90.0), Vector2(132.0, 58.0))
 
 
-func _menu_theme_rect(index: int) -> Rect2:
-	var column := index % 2
-	var row := index / 2
-	return Rect2(Vector2(48.0 + column * 330.0, 145.0 + row * 170.0), Vector2(294.0, 150.0))
+func _menu_theme_rect(display_slot: int) -> Rect2:
+	var column := display_slot % 2
+	var row := display_slot / 2
+	return Rect2(Vector2(48.0 + column * 330.0, 140.0 + row * 142.0), Vector2(294.0, 124.0))
+
+
+func _menu_backgrounds_rect() -> Rect2:
+	return Rect2(Vector2(120.0, 230.0), Vector2(480.0, 82.0))
 
 
 func _menu_restart_rect() -> Rect2:
-	return Rect2(Vector2(48.0, 675.0), Vector2(192.0, 64.0))
+	return Rect2(Vector2(120.0, 450.0), Vector2(480.0, 82.0))
 
 
 func _menu_legend_rect() -> Rect2:
-	return Rect2(Vector2(264.0, 675.0), Vector2(192.0, 64.0))
+	return Rect2(Vector2(120.0, 340.0), Vector2(480.0, 82.0))
 
 
 func _menu_resume_rect() -> Rect2:
-	return Rect2(Vector2(480.0, 675.0), Vector2(192.0, 64.0))
+	return Rect2(Vector2(120.0, 560.0), Vector2(480.0, 82.0))
 
 
 func _legend_back_rect() -> Rect2:
 	return Rect2(Vector2(260.0, 1190.0), Vector2(200.0, 58.0))
+
+
+func _backgrounds_back_rect() -> Rect2:
+	return Rect2(Vector2(260.0, 740.0), Vector2(200.0, 58.0))
 
 
 func _open_menu() -> void:
@@ -602,14 +613,23 @@ func _handle_menu_press(pointer: Vector2) -> void:
 			queue_redraw()
 		return
 
-	for index in range(BACKGROUND_NAMES.size()):
-		if _menu_theme_rect(index).has_point(pointer):
-			selected_background = index
-			_save_settings()
+	if menu_page == 2:
+		if _backgrounds_back_rect().has_point(pointer):
+			menu_page = 0
 			queue_redraw()
 			return
+		for display_slot in range(BACKGROUND_DISPLAY_ORDER.size()):
+			if _menu_theme_rect(display_slot).has_point(pointer):
+				selected_background = BACKGROUND_DISPLAY_ORDER[display_slot]
+				_save_settings()
+				queue_redraw()
+				return
+		return
 
-	if _menu_restart_rect().has_point(pointer):
+	if _menu_backgrounds_rect().has_point(pointer):
+		menu_page = 2
+		queue_redraw()
+	elif _menu_restart_rect().has_point(pointer):
 		menu_open = false
 		_start_new_run()
 	elif _menu_legend_rect().has_point(pointer):
@@ -828,7 +848,12 @@ func _physics_process(delta: float) -> void:
 		_activate_supernova_cores_at(entry)
 		_activate_ghost_cores_at(entry)
 		_damage_blocks_crossed_by_ghost(entry, previous_position)
-		if body.position.y > RETURN_Y + 32.0:
+		if body.position.y >= RETURN_Y:
+			var travel_y := body.position.y - previous_position.y
+			if absf(travel_y) > 0.0001:
+				var return_fraction := clampf((RETURN_Y - previous_position.y) / travel_y, 0.0, 1.0)
+				body.position.x = lerpf(previous_position.x, body.position.x, return_fraction)
+			body.position.y = RETURN_Y
 			_return_ball(entry)
 
 	if launched_ball_count == ball_count and active_ball_count == 0:
@@ -1807,31 +1832,45 @@ func _draw_menu_overlay() -> void:
 	if menu_page == 1:
 		_draw_legend_page()
 		return
+	if menu_page == 2:
+		_draw_backgrounds_page()
+		return
 
 	_draw_centered_label("RYKO MENU", Vector2(W * 0.5, 68.0), 28, CREAM)
-	_draw_centered_label("SELECT NIGHT SKY PAPER", Vector2(W * 0.5, 111.0), 14, Color(AQUA, 0.90))
-	for index in range(BACKGROUND_NAMES.size()):
-		_draw_theme_card(index)
-
+	_draw_centered_label("MISSION CONTROL", Vector2(W * 0.5, 111.0), 14, Color(AQUA, 0.90))
+	_draw_menu_action_button(_menu_backgrounds_rect(), "BACKGROUNDS", PHASE_BLUE)
+	_draw_centered_label(BACKGROUND_NAMES[selected_background], Vector2(W * 0.5, 324.0), 11, Color(CREAM, 0.52))
 	_draw_menu_action_button(_menu_restart_rect(), "RESTART", CORAL)
 	_draw_menu_action_button(_menu_legend_rect(), "LEGEND", AMBER)
 	_draw_menu_action_button(_menu_resume_rect(), "RESUME", AQUA)
-	_draw_centered_label("TAP A PREVIEW TO SELECT • SAVED ON THIS DEVICE", Vector2(W * 0.5, 775.0), 11, Color(CREAM, 0.54))
+	_draw_centered_label("SETTINGS ARE SAVED ON THIS DEVICE", Vector2(W * 0.5, 690.0), 11, Color(CREAM, 0.54))
 	_draw_menu_mission_notes()
 
 
-func _draw_theme_card(index: int) -> void:
-	var rect := _menu_theme_rect(index)
+func _draw_backgrounds_page() -> void:
+	_draw_centered_label("BACKGROUNDS", Vector2(W * 0.5, 67.0), 28, CREAM)
+	_draw_centered_label("SELECT NIGHT SKY PAPER", Vector2(W * 0.5, 108.0), 14, Color(AQUA, 0.90))
+	for display_slot in range(BACKGROUND_DISPLAY_ORDER.size()):
+		_draw_theme_card(display_slot, BACKGROUND_DISPLAY_ORDER[display_slot])
+	_draw_menu_action_button(_backgrounds_back_rect(), "BACK", AQUA)
+	_draw_centered_label("SELECTION IS SAVED ON THIS DEVICE", Vector2(W * 0.5, 825.0), 11, Color(CREAM, 0.54))
+
+
+func _draw_theme_card(display_slot: int, index: int) -> void:
+	var rect := _menu_theme_rect(display_slot)
 	var selected := index == selected_background
 	draw_rect(rect, Color(PLAYFIELD_BG, 0.96), true)
 	draw_rect(rect, AQUA if selected else Color(CREAM, 0.48), false, 4.0 if selected else 2.0, true)
-	var preview_rect := Rect2(rect.position + Vector2(12.0, 10.0), Vector2(86.0, 130.0))
-	draw_texture_rect(BACKGROUND_TEXTURES[index], preview_rect, false, Color(1.0, 1.0, 1.0, 0.96))
+	var preview_rect := Rect2(rect.position + Vector2(10.0, 9.0), Vector2(76.0, 106.0))
+	if index < BACKGROUND_TEXTURES.size():
+		draw_texture_rect(BACKGROUND_TEXTURES[index], preview_rect, false, Color(1.0, 1.0, 1.0, 0.96))
+	else:
+		draw_rect(preview_rect, PLAYFIELD_BG, true)
 	draw_rect(preview_rect, Color(CREAM, 0.36), false, 1.5, true)
-	var label_center_x := rect.position.x + 195.0
-	_draw_centered_label("%02d" % [index + 1], Vector2(label_center_x, rect.position.y + 45.0), 18, AMBER)
-	_draw_centered_label(BACKGROUND_NAMES[index], Vector2(label_center_x, rect.position.y + 78.0), 12, CREAM)
-	_draw_centered_label("SELECTED" if selected else "TAP TO SELECT", Vector2(label_center_x, rect.position.y + 112.0), 10, AQUA if selected else Color(CREAM, 0.48))
+	var label_center_x := rect.position.x + 190.0
+	_draw_centered_label("%02d" % [display_slot + 1], Vector2(label_center_x, rect.position.y + 32.0), 16, AMBER)
+	_draw_centered_label(BACKGROUND_NAMES[index], Vector2(label_center_x, rect.position.y + 62.0), 11, CREAM)
+	_draw_centered_label("SELECTED" if selected else "TAP TO SELECT", Vector2(label_center_x, rect.position.y + 94.0), 9, AQUA if selected else Color(CREAM, 0.48))
 
 
 func _draw_menu_action_button(rect: Rect2, label: String, accent: Color) -> void:
@@ -2138,54 +2177,10 @@ func _draw_ion_beam_effects() -> void:
 
 
 func _draw_launcher() -> void:
-	# Launcher 03: a narrow symmetrical shuttle cannon. It is intentionally
-	# drawn from geometry so it rotates perfectly with the aim direction.
-	var forward := aim_direction.normalized()
-	var side := forward.orthogonal()
-	var base := launcher
-	var body_points := PackedVector2Array([
-		base - side * 17.0,
-		base + forward * 11.0 - side * 13.0,
-		base + forward * 44.0 - side * 5.5,
-		base + forward * 53.0,
-		base + forward * 44.0 + side * 5.5,
-		base + forward * 11.0 + side * 13.0,
-		base + side * 17.0
-	])
-	draw_colored_polygon(body_points, Color(PANEL, 0.98))
-	var body_outline := body_points.duplicate()
-	body_outline.append(body_points[0])
-	draw_polyline(body_outline, CREAM, 3.0, true)
-
-	var left_fin := PackedVector2Array([
-		base - side * 15.0,
-		base + forward * 10.0 - side * 12.0,
-		base + forward * 29.0 - side * 20.0,
-		base + forward * 8.0 - side * 22.0
-	])
-	var right_fin := PackedVector2Array()
-	for point in left_fin:
-		var relative := point - base
-		right_fin.append(base + forward * relative.dot(forward) - side * relative.dot(side))
-	draw_colored_polygon(left_fin, Color(PHASE_BLUE, 0.88))
-	draw_colored_polygon(right_fin, Color(PHASE_BLUE, 0.88))
-	draw_polyline(PackedVector2Array([left_fin[0], left_fin[1], left_fin[2], left_fin[3], left_fin[0]]), CORAL, 2.2, true)
-	draw_polyline(PackedVector2Array([right_fin[0], right_fin[1], right_fin[2], right_fin[3], right_fin[0]]), CORAL, 2.2, true)
-
-	var core_center := base + forward * 23.0
-	var core_points := PackedVector2Array([
-		core_center + forward * 10.0,
-		core_center - forward * 8.0 - side * 8.0,
-		core_center - forward * 8.0 + side * 8.0
-	])
-	draw_colored_polygon(core_points, Color(AQUA, 0.82))
-	draw_polyline(PackedVector2Array([core_points[0], core_points[1], core_points[2], core_points[0]]), AMBER, 2.0, true)
-
-	var muzzle := base + forward * 49.0
-	draw_line(base + forward * 28.0, muzzle, CREAM, 5.0, true)
-	draw_circle(muzzle, 6.0, CORAL)
-	draw_circle(muzzle, 2.6, CREAM)
-	draw_line(base - side * 20.0, base + side * 20.0, Color(CREAM, 0.66), 3.0, true)
+	var rotation := Vector2.UP.angle_to(aim_direction.normalized())
+	draw_set_transform(launcher, rotation, Vector2.ONE)
+	draw_texture_rect(LAUNCHER_TEXTURE, Rect2(-30.0, -70.0, 60.0, 70.0), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_game_over() -> void:
