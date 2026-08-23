@@ -1458,14 +1458,18 @@ func _draw_blocks() -> void:
 				true
 			)
 			if is_dense:
-				_draw_cell_texture(ICON_BLOCK_DENSE, rect, 0.88)
+				_draw_cell_texture(ICON_BLOCK_DENSE, rect)
 			elif is_regenerative:
-				_draw_cell_texture(ICON_BLOCK_REGENERATIVE, rect, 0.86)
+				_draw_cell_texture(ICON_BLOCK_REGENERATIVE, rect)
 			elif is_black_hole:
-				_draw_cell_texture(ICON_BLOCK_BLACK_HOLE, rect, 0.84)
+				_draw_cell_texture(ICON_BLOCK_BLACK_HOLE, rect)
 				_draw_black_hole_sides(rect, item.get("absorbing_sides", []))
 			elif is_phase:
-				_draw_cell_texture(ICON_BLOCK_PHASE, rect, 0.78 * phase_alpha)
+				_draw_cell_texture(ICON_BLOCK_PHASE, rect, phase_alpha)
+			# Special artwork fills the complete cell. Apply the collision flash
+			# afterwards so it stays visible without hiding the HP label.
+			if variant != "normal" and hit_flash_ratio > 0.0:
+				draw_rect(rect, Color(CREAM, hit_flash_ratio * 0.25), true)
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -1591,10 +1595,7 @@ func _draw_pickups() -> void:
 			continue
 		var center: Vector2 = pickup["position"]
 		var icon_rect := Rect2(center - Vector2(26.0, 26.0), Vector2(52.0, 52.0))
-		_draw_cell_texture(ICON_POWER_PLUS_ONE, icon_rect, 0.90)
-		# The exact text stays code-rendered; generated art never controls gameplay copy.
-		draw_circle(center, 14.0, Color(PANEL, 0.96))
-		_draw_centered_label("+1", center, 17, CREAM)
+		_draw_cell_texture(ICON_POWER_PLUS_ONE, icon_rect, 0.94)
 
 
 func _draw_ion_powers() -> void:
@@ -1628,8 +1629,6 @@ func _draw_supernova_cores() -> void:
 			Rect2(center - Vector2(26.0, 26.0), Vector2(52.0, 52.0)),
 			0.44 if is_exhausted else 0.92
 		)
-		draw_circle(center, 11.0, Color(PANEL, 0.96))
-		_draw_centered_label(str(remaining), center, 12, CREAM)
 
 		var pulse_progress := clampf(
 			float(core.get("pulse_elapsed", SUPERNOVA_EFFECT_DURATION)) / SUPERNOVA_EFFECT_DURATION,
