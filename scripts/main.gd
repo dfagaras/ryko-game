@@ -65,22 +65,25 @@ const SUPERNOVA_EXPLOSION_RADIUS := CELL * 0.75
 const SUPERNOVA_EFFECT_DURATION := 0.36
 const BLOCK_HIT_FLASH_DURATION := 0.12
 
-const BG := Color("#08191c")
-const PLAYFIELD_BG := Color("#0b2225")
-const PANEL := Color("#0d262a")
-const AMBER := Color("#ffb84a")
-const AQUA := Color("#56e0d2")
-const CORAL := Color("#ff6b5f")
-const REGENERATIVE_GREEN := Color("#9ee66f")
-const VOID_PURPLE := Color("#b36cff")
+const BG := Color("#071419")
+const PLAYFIELD_BG := Color("#10262b")
+const PANEL := Color("#0c2025")
+const AMBER := Color("#e7ae43")
+const AQUA := Color("#55b8b1")
+const CORAL := Color("#e96b5f")
+const DENSE_ORANGE := Color("#d96732")
+const REGENERATIVE_GREEN := Color("#55b8b1")
+const VOID_PURPLE := Color("#745f98")
 const VOID_DARK := Color("#020608")
-const PHASE_BLUE := Color("#78a8ff")
-const ION_BLUE := Color("#32d8ff")
-const GHOST_PURPLE := Color("#b58cff")
+const PHASE_BLUE := Color("#9477b5")
+const ION_BLUE := Color("#55bfe3")
+const GHOST_PURPLE := Color("#a184c4")
 const NOVA_RED := Color("#ff4058")
 const NOVA_ORANGE := Color("#ff8a38")
-const MUTED := Color("#55777a")
-const CREAM := Color("#f3e7c5")
+const MUTED := Color("#6e8584")
+const CREAM := Color("#f2e3bb")
+const PAPER_FIBER := Color("#b9a984")
+const PAPER_SHADOW := Color("#020b0e")
 
 @export var fixed_generation_seed: int = 0
 
@@ -208,6 +211,11 @@ func _spawn_position(column: int, row: int) -> Vector2:
 func _spawn_row(hp: int, row: int = 0) -> void:
 	var columns := _shuffled_columns()
 	var block_count := _block_count_for_turn()
+	var should_spawn_power := turn >= ION_BEAM_START_TURN and rng.randf() < _power_spawn_chance()
+	# During this temporary equal-frequency test, reserve one cell for +1 and
+	# one for the selected power instead of silently dropping powers on dense rows.
+	if should_spawn_power:
+		block_count = mini(block_count, COLUMN_COUNT - 2)
 	var row_shapes: Array[String] = []
 	var row_orientations: Array[String] = []
 	var square_indices: Array[int] = []
@@ -287,55 +295,42 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 		"collected": false
 	})
 
-	# Keep the permanent +1 pickup, then assign powers only to remaining empty
-	# cells. Different powers can coexist when the row has enough room.
+	# Keep the permanent +1 pickup and add at most one power. Every currently
+	# unlocked power has the same selection weight; balancing comes later.
 	var next_power_index := block_count + 1
-	var supernova_spawned := false
-	# Test guarantee: reserve the first available power cell for Supernova on
-	# turn 10, before Ion or Ghost can consume the final empty column.
-	if turn == SUPERNOVA_CORE_START_TURN and next_power_index < COLUMN_COUNT:
-		var guaranteed_supernova_column := columns[next_power_index]
-		supernova_cores.append({
-			"column": guaranteed_supernova_column,
-			"row": row,
-			"position": _spawn_position(guaranteed_supernova_column, row),
-			"activated": false,
-			"pulse_elapsed": SUPERNOVA_EFFECT_DURATION
-		})
-		supernova_spawned = true
-		next_power_index += 1
-
-	if next_power_index < COLUMN_COUNT and rng.randf() < _ion_beam_spawn_chance():
-		var ion_column := columns[next_power_index]
-		ion_powers.append({
-			"column": ion_column,
-			"row": row,
-			"position": _spawn_position(ion_column, row),
-			"orientation": "horizontal" if rng.randf() < 0.5 else "vertical",
-			"activated": false,
-			"balls_inside": {}
-		})
-		next_power_index += 1
-
-	if next_power_index < COLUMN_COUNT and rng.randf() < _ghost_core_spawn_chance():
-		var ghost_column := columns[next_power_index]
-		ghost_cores.append({
-			"column": ghost_column,
-			"row": row,
-			"position": _spawn_position(ghost_column, row),
-			"activated": false
-		})
-		next_power_index += 1
-
-	if not supernova_spawned and next_power_index < COLUMN_COUNT and rng.randf() < _supernova_core_spawn_chance():
-		var supernova_column := columns[next_power_index]
-		supernova_cores.append({
-			"column": supernova_column,
-			"row": row,
-			"position": _spawn_position(supernova_column, row),
-			"activated": false,
-			"pulse_elapsed": SUPERNOVA_EFFECT_DURATION
-		})
+	if should_spawn_power and next_power_index < COLUMN_COUNT:
+		var eligible_powers: Array[String] = ["ion"]
+		if turn >= GHOST_CORE_START_TURN:
+			eligible_powers.append("ghost")
+		if turn >= SUPERNOVA_CORE_START_TURN:
+			eligible_powers.append("supernova")
+		var selected_power := eligible_powers[rng.randi_range(0, eligible_powers.size() - 1)]
+		var power_column := columns[next_power_index]
+		match selected_power:
+			"ion":
+				ion_powers.append({
+					"column": power_column,
+					"row": row,
+					"position": _spawn_position(power_column, row),
+					"orientation": "horizontal" if rng.randf() < 0.5 else "vertical",
+					"activated": false,
+					"balls_inside": {}
+				})
+			"ghost":
+				ghost_cores.append({
+					"column": power_column,
+					"row": row,
+					"position": _spawn_position(power_column, row),
+					"activated": false
+				})
+			"supernova":
+				supernova_cores.append({
+					"column": power_column,
+					"row": row,
+					"position": _spawn_position(power_column, row),
+					"activated": false,
+					"pulse_elapsed": SUPERNOVA_EFFECT_DURATION
+				})
 
 
 func _block_count_for_turn() -> int:
@@ -388,26 +383,14 @@ func _phase_block_spawn_chance() -> float:
 	return 0.32
 
 
-func _ion_beam_spawn_chance() -> float:
+func _power_spawn_chance() -> float:
 	if turn < ION_BEAM_START_TURN:
 		return 0.0
-	if turn <= 9:
-		return 0.28
-	if turn <= 19:
-		return 0.32
-	return 0.36
-
-
-func _ghost_core_spawn_chance() -> float:
 	if turn < GHOST_CORE_START_TURN:
-		return 0.0
-	return 0.18
-
-
-func _supernova_core_spawn_chance() -> float:
+		return 0.30
 	if turn < SUPERNOVA_CORE_START_TURN:
-		return 0.0
-	return 0.12
+		return 0.38
+	return 0.45
 
 
 func _choose_black_hole_sides() -> Array[String]:
@@ -1229,11 +1212,14 @@ func _process_board_advance(delta: float) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), BG)
+	_draw_paper_texture(Rect2(Vector2.ZERO, Vector2(W, H)), Color(PAPER_FIBER, 0.055), 96)
 	_draw_playfield()
-	draw_rect(Rect2(0, 0, W, 154), PANEL)
-	draw_line(Vector2(24, 154), Vector2(W - 24, 154), MUTED, 2.0)
+	draw_rect(Rect2(18.0, 16.0, W - 36.0, 138.0), Color(PANEL, 0.97), true)
+	draw_rect(Rect2(18.0, 16.0, W - 36.0, 138.0), Color(CREAM, 0.72), false, 3.0, true)
+	draw_line(Vector2(34.0, 126.0), Vector2(W - 34.0, 126.0), Color(MUTED, 0.58), 1.0, true)
 
 	_draw_signal_details()
+	_draw_cosmic_doodles()
 	_draw_header()
 	_draw_launch_line()
 	_draw_blocks()
@@ -1263,17 +1249,56 @@ func _draw_playfield() -> void:
 		Vector2(BOARD_RIGHT - BOARD_LEFT, playfield_bottom - BOARD_TOP)
 	)
 	draw_rect(playfield_rect, PLAYFIELD_BG, true)
-	var wall_color := Color(MUTED, 0.82)
+	_draw_paper_texture(playfield_rect, Color(PAPER_FIBER, 0.07), 72)
+	var wall_color := Color(CREAM, 0.78)
+	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
+	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
+	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_RIGHT, BOARD_TOP), Color(PAPER_SHADOW, 0.72), 8.0, true)
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), wall_color, 3.0, true)
 	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), wall_color, 3.0, true)
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_RIGHT, BOARD_TOP), wall_color, 3.0, true)
-	# A separate lower area keeps the launch origin visually distinct from the
-	# descending block field. This can later be replaced by the final art.
+	# The launch bay remains on the same night-paper page, separated only by the
+	# physical start line instead of a second black panel.
 	draw_rect(
 		Rect2(Vector2(BOARD_LEFT, LAUNCH_LINE_Y), Vector2(BOARD_RIGHT - BOARD_LEFT, H - LAUNCH_LINE_Y)),
-		Color(PANEL, 0.55),
+		Color(PLAYFIELD_BG, 0.78),
 		true
 	)
+
+
+func _draw_paper_texture(area: Rect2, color: Color, sample_count: int) -> void:
+	# Deterministic marks keep the paper stable between frames and avoid visual
+	# noise that could be mistaken for moving gameplay objects.
+	for index in range(sample_count):
+		var seed_value := float(index + 1)
+		var unit_x := fposmod(sin(seed_value * 12.9898) * 43758.5453, 1.0)
+		var unit_y := fposmod(sin(seed_value * 78.233) * 24634.6345, 1.0)
+		var start := area.position + Vector2(unit_x * area.size.x, unit_y * area.size.y)
+		var fiber_length := 2.0 + float(index % 5) * 1.7
+		var direction := Vector2(1.0, 0.18 if index % 2 == 0 else -0.12)
+		draw_line(start, start + direction * fiber_length, color, 1.0, true)
+
+
+func _draw_cosmic_doodles() -> void:
+	var doodle_color := Color(CREAM, 0.32)
+	_draw_doodle_star(Vector2(48.0, 111.0), 7.0, doodle_color)
+	_draw_doodle_star(Vector2(W - 48.0, 110.0), 6.0, doodle_color)
+	_draw_doodle_planet(Vector2(82.0, H - 72.0), 24.0, Color(CREAM, 0.26))
+	draw_arc(Vector2(W - 72.0, H - 76.0), 20.0, 0.0, TAU * 0.84, 24, Color(AQUA, 0.24), 2.0, true)
+	draw_arc(Vector2(W - 72.0, H - 76.0), 10.0, PI * 0.35, TAU, 20, Color(CREAM, 0.22), 1.5, true)
+
+
+func _draw_doodle_star(center: Vector2, radius: float, color: Color) -> void:
+	draw_line(center + Vector2(-radius, 0.0), center + Vector2(radius, 0.0), color, 1.5, true)
+	draw_line(center + Vector2(0.0, -radius), center + Vector2(0.0, radius), color, 1.5, true)
+	draw_line(center + Vector2(-radius * 0.55, -radius * 0.55), center + Vector2(radius * 0.55, radius * 0.55), color, 1.0, true)
+	draw_line(center + Vector2(radius * 0.55, -radius * 0.55), center + Vector2(-radius * 0.55, radius * 0.55), color, 1.0, true)
+
+
+func _draw_doodle_planet(center: Vector2, radius: float, color: Color) -> void:
+	draw_arc(center, radius * 0.62, 0.0, TAU, 28, color, 1.5, true)
+	draw_arc(center, radius, PI * 0.86, PI * 1.86, 24, color, 1.5, true)
+	draw_arc(center, radius, -PI * 0.14, PI * 0.86, 24, color, 1.5, true)
 
 
 func _draw_active_balls() -> void:
@@ -1343,26 +1368,36 @@ func _distance_to_board_edge(origin: Vector2, direction: Vector2) -> float:
 
 
 func _draw_header() -> void:
-	draw_string(fallback_font, Vector2(34, 66), "RYKO", HORIZONTAL_ALIGNMENT_LEFT, -1, 34, CREAM)
-	draw_string(fallback_font, Vector2(34, 108), "PROTOCOL // ENDLESS", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, AQUA)
-	draw_string(fallback_font, Vector2(W - 190, 68), "ROUND %02d" % turn, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, AMBER)
-	draw_string(fallback_font, Vector2(W - 190, 108), "BALLS %02d" % ball_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, CORAL)
+	draw_string(fallback_font, Vector2(38.0, 48.0), "ROUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(CREAM, 0.66))
+	draw_string(fallback_font, Vector2(38.0, 91.0), "%02d" % turn, HORIZONTAL_ALIGNMENT_LEFT, -1, 32, AMBER)
+	_draw_centered_label("NIGHT SKY PAPER", Vector2(W * 0.5, 50.0), 18, CREAM)
+	_draw_centered_label("RYKO // ENDLESS LOG", Vector2(W * 0.5, 88.0), 13, Color(AQUA, 0.86))
+	draw_string(fallback_font, Vector2(W - 142.0, 48.0), "BALLS", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(CREAM, 0.66))
+	draw_string(fallback_font, Vector2(W - 142.0, 91.0), "%02d" % ball_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 32, CORAL)
+	_draw_centered_label("COSMIC NOTE // %04d" % (run_seed % 10000), Vector2(W * 0.5, 139.0), 11, Color(CREAM, 0.46))
 
 
 func _draw_signal_details() -> void:
-	for i in range(18):
-		var x := 28.0 + i * 19.0
-		var height := 5.0 + float((i * 7) % 18)
-		draw_line(Vector2(x, 138), Vector2(x, 138 - height), Color(AQUA, 0.42), 2.0)
-	for p in [Vector2(92, 205), Vector2(615, 218), Vector2(650, 522), Vector2(70, 704), Vector2(630, 902)]:
-		draw_circle(p, 2.0, Color(MUTED, 0.55))
+	for index in range(9):
+		var angle := TAU * float(index) / 9.0
+		var point := Vector2(W * 0.5, 50.0) + Vector2(cos(angle), sin(angle)) * 94.0
+		draw_circle(point, 1.5, Color(CREAM, 0.26))
+	for point in [Vector2(48, 214), Vector2(666, 238), Vector2(54, 552), Vector2(662, 784), Vector2(48, 944)]:
+		draw_circle(point, 1.8, Color(PAPER_FIBER, 0.30))
 
 
 func _draw_launch_line() -> void:
 	draw_line(
+		Vector2(BOARD_LEFT, LAUNCH_LINE_Y + 3.0),
+		Vector2(BOARD_RIGHT, LAUNCH_LINE_Y + 3.0),
+		Color(PAPER_SHADOW, 0.76),
+		6.0,
+		true
+	)
+	draw_line(
 		Vector2(BOARD_LEFT, LAUNCH_LINE_Y),
 		Vector2(BOARD_RIGHT, LAUNCH_LINE_Y),
-		Color(CREAM, 0.72),
+		Color(CREAM, 0.82),
 		3.0,
 		true
 	)
@@ -1389,7 +1424,7 @@ func _draw_blocks() -> void:
 			var is_black_hole := variant == "black_hole"
 			var border_color := AMBER
 			if is_dense:
-				border_color = AQUA
+				border_color = DENSE_ORANGE
 			elif is_regenerative:
 				border_color = REGENERATIVE_GREEN
 			elif is_black_hole:
@@ -1400,7 +1435,11 @@ func _draw_blocks() -> void:
 			# Draw the border as an outer solid shape plus an inset fill. Unlike a
 			# centered stroke, this can never overlap a neighbouring cell.
 			draw_rect(rect, border_color, true)
-			var square_fill := Color(PANEL, 0.22) if is_phase and not phase_active else PANEL
+			var square_fill := PANEL.lerp(border_color, 0.18)
+			if is_black_hole:
+				square_fill = VOID_DARK.lerp(VOID_PURPLE, 0.10)
+			elif is_phase and not phase_active:
+				square_fill = PLAYFIELD_BG.lerp(PHASE_BLUE, 0.08)
 			draw_rect(
 				rect.grow(-BLOCK_OUTLINE_WIDTH),
 				square_fill.lerp(CREAM, hit_flash_ratio * 0.32),
@@ -1408,17 +1447,27 @@ func _draw_blocks() -> void:
 			)
 			if is_dense:
 				var inner_border := rect.grow(-(BLOCK_OUTLINE_WIDTH + 7.0))
-				draw_rect(inner_border, AQUA, false, 3.0, true)
-				_draw_centered_label("x2", center + Vector2(0.0, -28.0), 13, CORAL)
-				label_center.y += 7.0
+				draw_rect(inner_border, Color(CREAM, 0.72), false, 2.5, true)
+				for marker_x in [-1.0, 1.0]:
+					draw_colored_polygon(PackedVector2Array([
+						center + Vector2(marker_x * 18.0, -30.0),
+						center + Vector2(marker_x * 12.0, -24.0),
+						center + Vector2(marker_x * 18.0, -18.0),
+						center + Vector2(marker_x * 24.0, -24.0)
+					]), Color(CREAM, 0.78))
+				label_center.y += 5.0
 			elif is_regenerative:
-				_draw_centered_label("R", center + Vector2(0.0, -28.0), 13, REGENERATIVE_GREEN)
-				label_center.y += 7.0
+				draw_arc(center, 29.0, -PI * 0.82, PI * 0.18, 22, Color(CREAM, 0.58), 2.0, true)
+				draw_arc(center, 29.0, PI * 0.18, PI * 1.18, 22, Color(CREAM, 0.32), 2.0, true)
+				for marker in [Vector2(-25.0, -25.0), Vector2(25.0, -25.0), Vector2(-25.0, 25.0), Vector2(25.0, 25.0)]:
+					draw_circle(center + marker, 3.0, Color(CREAM, 0.64))
 			elif is_black_hole:
 				_draw_black_hole_sides(rect, item.get("absorbing_sides", []))
 			elif is_phase:
-				_draw_centered_label("P", center + Vector2(0.0, -28.0), 13, Color(PHASE_BLUE, phase_alpha))
-				label_center.y += 7.0
+				var phase_mark_color := Color(CREAM, 0.62 * phase_alpha)
+				for offset in [-25.0, 0.0, 25.0]:
+					draw_circle(center + Vector2(offset, -30.0), 2.5, phase_mark_color)
+					draw_circle(center + Vector2(offset, 30.0), 2.5, phase_mark_color)
 		else:
 			var local_points := _triangle_local_points(String(item["orientation"]))
 			var points := PackedVector2Array()
@@ -1434,15 +1483,18 @@ func _draw_blocks() -> void:
 				inner_points.append(center + point)
 			var triangle_border := Color(PHASE_BLUE, phase_alpha) if is_phase else CORAL
 			triangle_border = triangle_border.lerp(CREAM, hit_flash_ratio)
-			var triangle_fill := Color(PANEL, 0.22) if is_phase and not phase_active else PANEL
+			var triangle_fill := PANEL.lerp(triangle_border, 0.18)
+			if is_phase and not phase_active:
+				triangle_fill = PLAYFIELD_BG.lerp(PHASE_BLUE, 0.08)
 			draw_colored_polygon(points, triangle_border)
 			draw_colored_polygon(
 				inner_points,
 				triangle_fill.lerp(CREAM, hit_flash_ratio * 0.32)
 			)
 			if is_phase:
-				_draw_centered_label("P", label_center + Vector2(0.0, -24.0), 13, Color(PHASE_BLUE, phase_alpha))
-				label_center.y += 7.0
+				for marker_index in range(3):
+					var marker_position := center + local_points[marker_index].lerp(centroid, 0.30)
+					draw_circle(marker_position, 2.7, Color(CREAM, 0.58 * phase_alpha))
 		_draw_centered_label(hp, label_center, 24, label_color)
 
 
