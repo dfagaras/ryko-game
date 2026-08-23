@@ -43,6 +43,10 @@ const WALL_COLLISION_LAYER := 1
 const BALL_COLLISION_LAYER := 2
 const BLOCK_COLLISION_LAYER := 4
 const BALL_LAUNCH_INTERVAL := 0.075
+const BALL_SPEED_MULTIPLIERS := [1.0, 1.5, 2.0, 3.0, 4.0]
+const BALL_SPEED_LABELS := ["1x", "1.5x", "2x", "3x", "4x"]
+const SPEED_NEEDLE_SMOOTHING := 9.0
+const SPEED_CHANGE_SMOOTHING := 5.0
 const PICKUP_RADIUS := 19.0
 const TRIANGLE_CHANCE := 0.28
 const TRIANGLE_ORIENTATIONS := ["top_left", "top_right", "bottom_left", "bottom_right"]
@@ -74,7 +78,12 @@ const BALL_SOUND_NAMES := [
 	"SOFT TAP",
 	"GLASS CHIME",
 	"RUBBER POP",
-	"RETRO BLIP"
+	"RETRO BLIP",
+	"PING PONG",
+	"FELT BOUNCE",
+	"CORK TAP",
+	"BUBBLE DROP",
+	"MOON DUST"
 ]
 const BACKGROUND_NAMES := [
 	"STAR CHART",
@@ -106,7 +115,7 @@ const MUTED := Color("#6e8584")
 const CREAM := Color("#f2e3bb")
 const PAPER_FIBER := Color("#b9a984")
 const PAPER_SHADOW := Color("#020b0e")
-const BALL_SOUND_ACCENTS := [AMBER, AQUA, ION_BLUE, CORAL, PHASE_BLUE]
+const BALL_SOUND_ACCENTS := [AMBER, AQUA, ION_BLUE, CORAL, PHASE_BLUE, CREAM, MUTED, DENSE_ORANGE, GHOST_PURPLE, AQUA]
 
 # Full-cell paper illustrations. Geometry, collision borders and HP text remain
 # code-driven so the artwork can never alter gameplay alignment or readability.
@@ -122,6 +131,7 @@ const ICON_POWER_SUPERNOVA: Texture2D = preload("res://assets/icons/power_supern
 const LAUNCHER_TEXTURE: Texture2D = preload("res://assets/launcher/retro_cannon.png")
 const MENU_SPEAKER_TEXTURE: Texture2D = preload("res://assets/ui/menu_speaker_2d.png")
 const RECALL_KNOB_TEXTURE: Texture2D = preload("res://assets/ui/recall_knob_2d.png")
+const RADIO_WAVEBOARD_TEXTURE: Texture2D = preload("res://assets/ui/radio_waveboard_2d.png")
 const BACKGROUND_TEXTURES: Array[Texture2D] = [
 	preload("res://assets/backgrounds/star_chart.jpg"),
 	preload("res://assets/backgrounds/mission_log.jpg"),
@@ -143,6 +153,7 @@ var first_return_recorded := false
 
 var aim_direction := Vector2(0, -1)
 var is_aiming := false
+var aim_gesture_active := false
 var drag_origin := Vector2.ZERO
 var pull_distance := 0.0
 var pull_strength := 0.0
@@ -166,6 +177,12 @@ var menu_open := false
 var menu_page := 0
 var selected_background := 0
 var selected_ball_sound := 0
+var selected_ball_speed := 0
+var ball_speed_multiplier := 1.0
+var target_ball_speed_multiplier := 1.0
+var speed_needle_position := 0.0
+var speed_needle_target := 0.0
+var is_dragging_speed_needle := false
 var radio_hit_energy := 0.0
 var radio_phase := 0.0
 var radio_clear_elapsed := RADIO_CLEAR_DURATION
@@ -182,6 +199,7 @@ var run_seed := 0
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
 	_load_settings()
+	_apply_loaded_speed_setting()
 	_create_radio_audio()
 	_create_boundaries()
 	_start_new_run()
@@ -280,6 +298,27 @@ func _block_hit_sample(sound_index: int, time: float) -> float:
 			var phase := TAU * frequency * time
 			var rounded_square := sin(phase) * 0.78 + sin(phase * 3.0) * 0.12
 			return rounded_square * attack * decay * 0.64
+		5: # Ping pong: hollow plastic shell with a soft double resonance.
+			var decay := exp(-time * 44.0)
+			var shell := sin(TAU * 930.0 * time) * 0.48 + sin(TAU * 1280.0 * time) * 0.22
+			return shell * attack * decay * 0.58
+		6: # Felt bounce: muted cloth-covered impact with almost no bright attack.
+			var decay := exp(-time * 55.0)
+			var hush := sin(TAU * 310.0 * time) * 0.54 + sin(TAU * 470.0 * time) * 0.16
+			return hush * attack * attack * decay * 0.48
+		7: # Cork tap: warm, dry body with a very short wooden overtone.
+			var decay := exp(-time * 48.0)
+			var cork := sin(TAU * 610.0 * time) * 0.55 + sin(TAU * 285.0 * time) * 0.24
+			return cork * attack * decay * 0.57
+		8: # Bubble drop: rounded upward chirp with no sharp transient.
+			var decay := exp(-time * 31.0)
+			var phase := TAU * (330.0 * time + 1450.0 * time * time)
+			return (sin(phase) * 0.78 + sin(phase * 0.5) * 0.12) * attack * decay * 0.58
+		9: # Moon dust: a soft airy tick over a low, distant pulse.
+			var decay := exp(-time * 39.0)
+			var dust := sin(TAU * 760.0 * time + sin(TAU * 91.0 * time) * 0.45) * 0.28
+			var body := sin(TAU * 240.0 * time) * 0.42
+			return (dust + body) * attack * decay * 0.50
 		_: # Warm pulse: the current pleasant cosmic pluck.
 			var decay := exp(-time * 42.0)
 			var phase := TAU * (840.0 * time - 1250.0 * time * time)
@@ -298,6 +337,33 @@ func _select_ball_sound(sound_index: int, play_preview: bool = false) -> void:
 		block_hit_audio_players[0].play()
 
 
+func _speed_position_for_index(speed_index: int) -> float:
+	return float(clampi(speed_index, 0, BALL_SPEED_MULTIPLIERS.size() - 1)) / float(BALL_SPEED_MULTIPLIERS.size() - 1)
+
+
+func _speed_multiplier_from_position(position: float) -> float:
+	var scaled := clampf(position, 0.0, 1.0) * float(BALL_SPEED_MULTIPLIERS.size() - 1)
+	var lower_index := mini(int(floor(scaled)), BALL_SPEED_MULTIPLIERS.size() - 1)
+	var upper_index := mini(lower_index + 1, BALL_SPEED_MULTIPLIERS.size() - 1)
+	return lerpf(float(BALL_SPEED_MULTIPLIERS[lower_index]), float(BALL_SPEED_MULTIPLIERS[upper_index]), scaled - float(lower_index))
+
+
+func _apply_loaded_speed_setting() -> void:
+	selected_ball_speed = clampi(selected_ball_speed, 0, BALL_SPEED_MULTIPLIERS.size() - 1)
+	speed_needle_position = _speed_position_for_index(selected_ball_speed)
+	speed_needle_target = speed_needle_position
+	ball_speed_multiplier = float(BALL_SPEED_MULTIPLIERS[selected_ball_speed])
+	target_ball_speed_multiplier = ball_speed_multiplier
+
+
+func _select_ball_speed(speed_index: int, save_setting: bool = true) -> void:
+	selected_ball_speed = clampi(speed_index, 0, BALL_SPEED_MULTIPLIERS.size() - 1)
+	speed_needle_target = _speed_position_for_index(selected_ball_speed)
+	target_ball_speed_multiplier = float(BALL_SPEED_MULTIPLIERS[selected_ball_speed])
+	if save_setting:
+		_save_settings()
+
+
 func _play_block_hit_sound() -> void:
 	if block_hit_audio_players.is_empty():
 		return
@@ -313,6 +379,8 @@ func _update_radio(delta: float) -> void:
 	radio_phase = fposmod(radio_phase + delta, TAU)
 	radio_hit_energy = move_toward(radio_hit_energy, 0.0, delta * 1.65)
 	radio_clear_elapsed = minf(RADIO_CLEAR_DURATION, radio_clear_elapsed + delta)
+	speed_needle_position = lerpf(speed_needle_position, speed_needle_target, 1.0 - exp(-SPEED_NEEDLE_SMOOTHING * delta))
+	ball_speed_multiplier = move_toward(ball_speed_multiplier, target_ball_speed_multiplier, SPEED_CHANGE_SMOOTHING * delta)
 
 
 func _pulse_radio(amount: float = 0.3) -> void:
@@ -345,12 +413,14 @@ func _load_settings() -> void:
 		return
 	selected_background = clampi(int(config.get_value("visual", "background", 0)), 0, BACKGROUND_NAMES.size() - 1)
 	selected_ball_sound = clampi(int(config.get_value("audio", "ball_sound", 0)), 0, BALL_SOUND_NAMES.size() - 1)
+	selected_ball_speed = clampi(int(config.get_value("gameplay", "ball_speed", 0)), 0, BALL_SPEED_MULTIPLIERS.size() - 1)
 
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
 	config.set_value("visual", "background", selected_background)
 	config.set_value("audio", "ball_sound", selected_ball_sound)
+	config.set_value("gameplay", "ball_speed", selected_ball_speed)
 	config.save(SETTINGS_PATH)
 
 
@@ -384,6 +454,7 @@ func _start_new_run() -> void:
 	first_return_recorded = false
 	aim_direction = Vector2(0, -1)
 	is_aiming = false
+	aim_gesture_active = false
 	pull_distance = 0.0
 	pull_strength = 0.0
 	launched_ball_count = 0
@@ -748,6 +819,20 @@ func _menu_button_rect() -> Rect2:
 	return Rect2(Vector2(34.0, 1120.0), Vector2(112.0, 132.0))
 
 
+func _radio_scope_outer_rect() -> Rect2:
+	var footer := Rect2(BOARD_LEFT, 1110.0, BOARD_RIGHT - BOARD_LEFT, 152.0)
+	return Rect2(footer.position + Vector2(119.0, 37.0), Vector2(footer.size.x - 238.0, 92.0))
+
+
+func _radio_speed_track_rect() -> Rect2:
+	var scope := _radio_scope_outer_rect()
+	return Rect2(scope.position + Vector2(20.0, 12.0), Vector2(scope.size.x - 40.0, 38.0))
+
+
+func _radio_speed_interaction_rect() -> Rect2:
+	return _radio_scope_outer_rect().grow(-5.0)
+
+
 func _menu_theme_rect(display_slot: int) -> Rect2:
 	var column := display_slot % 2
 	var row := display_slot / 2
@@ -775,7 +860,9 @@ func _menu_resume_rect() -> Rect2:
 
 
 func _menu_ball_sound_option_rect(sound_index: int) -> Rect2:
-	return Rect2(Vector2(64.0, 145.0 + sound_index * 135.0), Vector2(592.0, 112.0))
+	var column := sound_index % 2
+	var row := floori(float(sound_index) / 2.0)
+	return Rect2(Vector2(44.0 + column * 326.0, 145.0 + row * 135.0), Vector2(306.0, 112.0))
 
 
 func _legend_back_rect() -> Rect2:
@@ -794,9 +881,56 @@ func _open_menu() -> void:
 	menu_open = true
 	menu_page = 0
 	is_aiming = false
+	aim_gesture_active = false
 	pull_distance = 0.0
 	pull_strength = 0.0
 	queue_redraw()
+
+
+func _update_speed_needle_drag(pointer: Vector2) -> void:
+	var track := _radio_speed_track_rect()
+	var normalized := clampf((pointer.x - track.position.x) / track.size.x, 0.0, 1.0)
+	speed_needle_target = normalized
+	target_ball_speed_multiplier = _speed_multiplier_from_position(normalized)
+	selected_ball_speed = clampi(int(round(normalized * float(BALL_SPEED_MULTIPLIERS.size() - 1))), 0, BALL_SPEED_MULTIPLIERS.size() - 1)
+
+
+func _finish_speed_needle_drag() -> void:
+	is_dragging_speed_needle = false
+	_select_ball_speed(selected_ball_speed, true)
+	queue_redraw()
+
+
+func _handle_speed_needle_input(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		if event.pressed and _radio_speed_interaction_rect().has_point(event.position):
+			is_dragging_speed_needle = true
+			_update_speed_needle_drag(event.position)
+			queue_redraw()
+			return true
+		if not event.pressed and is_dragging_speed_needle:
+			_update_speed_needle_drag(event.position)
+			_finish_speed_needle_drag()
+			return true
+	elif event is InputEventScreenDrag and is_dragging_speed_needle:
+		_update_speed_needle_drag(event.position)
+		queue_redraw()
+		return true
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed and _radio_speed_interaction_rect().has_point(event.position):
+			is_dragging_speed_needle = true
+			_update_speed_needle_drag(event.position)
+			queue_redraw()
+			return true
+		if not event.pressed and is_dragging_speed_needle:
+			_update_speed_needle_drag(event.position)
+			_finish_speed_needle_drag()
+			return true
+	elif event is InputEventMouseMotion and is_dragging_speed_needle:
+		_update_speed_needle_drag(event.position)
+		queue_redraw()
+		return true
+	return false
 
 
 func _handle_menu_press(pointer: Vector2) -> void:
@@ -861,6 +995,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_handle_menu_press(pressed_position)
 		return
 
+	if _handle_speed_needle_input(event):
+		return
+
 	if pressed_position.x >= 0.0 and _menu_button_rect().has_point(pressed_position):
 		_open_menu()
 		return
@@ -890,24 +1027,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_begin_aim(event.position)
-		else:
+		elif aim_gesture_active:
 			_release_aim()
 		queue_redraw()
-	elif event is InputEventScreenDrag:
+	elif event is InputEventScreenDrag and aim_gesture_active:
 		_update_drag_aim(event.position)
 		queue_redraw()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_begin_aim(event.position)
-		else:
+		elif aim_gesture_active:
 			_release_aim()
 		queue_redraw()
-	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	elif event is InputEventMouseMotion and aim_gesture_active and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		_update_drag_aim(event.position)
 		queue_redraw()
 
 
 func _begin_aim(pointer: Vector2) -> void:
+	aim_gesture_active = true
 	drag_origin = pointer
 	pull_distance = 0.0
 	pull_strength = 0.0
@@ -939,6 +1077,7 @@ func _update_drag_aim(pointer: Vector2) -> void:
 func _release_aim() -> void:
 	if is_aiming and pull_distance >= RELEASE_PULL_DISTANCE:
 		_launch_volley()
+	aim_gesture_active = false
 	is_aiming = false
 	pull_distance = 0.0
 	pull_strength = 0.0
@@ -1005,7 +1144,7 @@ func _spawn_volley_ball() -> void:
 	add_child(body)
 	balls.append({
 		"body": body,
-		"velocity": volley_direction * BALL_SPEED,
+		"velocity": volley_direction * BALL_SPEED * ball_speed_multiplier,
 		"returned": false,
 		"ghost": false,
 		"supernova": false,
@@ -1035,7 +1174,7 @@ func _physics_process(delta: float) -> void:
 	launch_timer -= delta
 	while launched_ball_count < ball_count and launch_timer <= 0.0:
 		_spawn_volley_ball()
-		launch_timer += BALL_LAUNCH_INTERVAL
+		launch_timer += BALL_LAUNCH_INTERVAL / maxf(ball_speed_multiplier, 0.01)
 
 	for entry in balls:
 		if bool(entry["returned"]):
@@ -1044,10 +1183,12 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(body):
 			continue
 		var velocity: Vector2 = entry["velocity"]
+		velocity = velocity.normalized() * BALL_SPEED * ball_speed_multiplier
+		entry["velocity"] = velocity
 		var previous_position := body.position
 		var collision := body.move_and_collide(velocity * delta)
 		if collision:
-			velocity = velocity.bounce(collision.get_normal()).normalized() * BALL_SPEED
+			velocity = velocity.bounce(collision.get_normal()).normalized() * BALL_SPEED * ball_speed_multiplier
 			entry["velocity"] = velocity
 			var collider := collision.get_collider()
 			if collider is StaticBody2D and collider.get_meta("kind", "") == "block":
@@ -2080,22 +2221,13 @@ func _draw_radio_console(rect: Rect2) -> void:
 
 	_draw_integrated_menu_speaker(Vector2(rect.position.x + 64.0, rect.position.y + 69.0))
 
-	# The oscilloscope now owns nearly all space between the two physical controls.
-	var scope_outer := Rect2(rect.position + Vector2(119.0, 37.0), Vector2(rect.size.x - 238.0, 92.0))
-	_draw_rounded_panel(Rect2(scope_outer.position + Vector2(0.0, 3.0), scope_outer.size), Color(PAPER_SHADOW, 0.88), Color(PAPER_SHADOW, 0.88), 0.0, 14.0)
-	_draw_rounded_panel(scope_outer, Color(BG, 1.0), Color(CREAM, 0.60), 2.0, 14.0)
-	_draw_rounded_panel(scope_outer.grow(-5.0), Color(BG, 0.98), Color(AMBER, 0.17), 1.0, 10.0)
-	var wave_rect := Rect2(scope_outer.position + Vector2(13.0, 11.0), Vector2(scope_outer.size.x - 26.0, 53.0))
-	_draw_radio_scope_grid(wave_rect)
+	# Keep the exact existing scope rectangle; the static housing is now the
+	# approved 2D asset while waveform, needle and labels remain interactive.
+	var scope_outer := _radio_scope_outer_rect()
+	draw_texture_rect(RADIO_WAVEBOARD_TEXTURE, scope_outer, false)
+	var wave_rect := _radio_speed_track_rect()
 	_draw_radio_waveform(wave_rect)
-	var status := "READY"
-	if radio_clear_elapsed < RADIO_CLEAR_DURATION:
-		status = "FIELD CLEAR"
-	elif state == TurnState.FIRING:
-		status = "%02d / %02d LAUNCHED" % [launched_ball_count, ball_count]
-	elif state == TurnState.ADVANCING:
-		status = "ROW SHIFT"
-	_draw_centered_label(status, Vector2(wave_rect.get_center().x, scope_outer.end.y - 13.0), 9, Color(AQUA, 0.82))
+	_draw_radio_speed_control(scope_outer, wave_rect)
 	_draw_integrated_recall_knob(Vector2(rect.end.x - 64.0, rect.position.y + 69.0))
 
 
@@ -2138,6 +2270,26 @@ func _regular_polygon(center: Vector2, radius: float, sides: int, rotation: floa
 		var angle := rotation + TAU * float(index) / float(sides)
 		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
 	return points
+
+
+func _draw_radio_speed_control(scope_rect: Rect2, wave_rect: Rect2) -> void:
+	for speed_index in range(BALL_SPEED_MULTIPLIERS.size()):
+		var ratio := _speed_position_for_index(speed_index)
+		var x := lerpf(wave_rect.position.x, wave_rect.end.x, ratio)
+		draw_line(Vector2(x, wave_rect.end.y + 2.0), Vector2(x, wave_rect.end.y + 7.0), Color(AQUA, 0.72), 1.5, true)
+		_draw_centered_label(BALL_SPEED_LABELS[speed_index], Vector2(x, wave_rect.end.y + 14.0), 7, Color(AQUA, 0.76))
+
+	var needle_x := lerpf(wave_rect.position.x, wave_rect.end.x, speed_needle_position)
+	var needle_top := wave_rect.position.y - 1.0
+	var needle_bottom := wave_rect.end.y + 7.0
+	draw_line(Vector2(needle_x + 1.5, needle_top + 1.5), Vector2(needle_x + 1.5, needle_bottom + 1.5), Color(PAPER_SHADOW, 0.78), 4.0, true)
+	draw_line(Vector2(needle_x, needle_top), Vector2(needle_x, needle_bottom), Color(CORAL, 0.96), 2.2, true)
+	draw_circle(Vector2(needle_x, needle_top), 3.8, Color(CORAL, 0.92))
+	draw_circle(Vector2(needle_x, needle_top), 1.5, CREAM)
+	draw_circle(Vector2(needle_x, needle_bottom), 3.2, Color(CORAL, 0.88))
+
+	var speed_text := "BALL SPEED %sX" % String.num(ball_speed_multiplier, 2)
+	_draw_centered_label(speed_text, Vector2(scope_rect.get_center().x, scope_rect.end.y - 6.0), 8, Color(AQUA, 0.90))
 
 
 func _draw_radio_scope_grid(rect: Rect2) -> void:
@@ -2280,10 +2432,10 @@ func _draw_ball_sound_card(sound_index: int) -> void:
 	var accent: Color = BALL_SOUND_ACCENTS[sound_index]
 	draw_rect(rect, Color(PLAYFIELD_BG, 0.96), true)
 	draw_rect(rect, accent if selected else Color(CREAM, 0.34), false, 4.0 if selected else 2.0, true)
-	_draw_centered_label("%02d" % [sound_index + 1], Vector2(rect.position.x + 42.0, rect.position.y + 32.0), 15, accent)
-	draw_string(fallback_font, rect.position + Vector2(78.0, 38.0), BALL_SOUND_NAMES[sound_index], HORIZONTAL_ALIGNMENT_LEFT, 190.0, 16, CREAM)
-	draw_string(fallback_font, rect.position + Vector2(78.0, 75.0), "SELECTED" if selected else "TAP TO PREVIEW", HORIZONTAL_ALIGNMENT_LEFT, 190.0, 10, accent if selected else Color(CREAM, 0.48))
-	var wave_rect := Rect2(rect.position + Vector2(304.0, 24.0), Vector2(258.0, 64.0))
+	_draw_centered_label("%02d" % [sound_index + 1], Vector2(rect.position.x + 27.0, rect.position.y + 28.0), 13, accent)
+	draw_string(fallback_font, rect.position + Vector2(52.0, 33.0), BALL_SOUND_NAMES[sound_index], HORIZONTAL_ALIGNMENT_LEFT, 238.0, 13, CREAM)
+	draw_string(fallback_font, rect.position + Vector2(52.0, 58.0), "SELECTED" if selected else "TAP TO PREVIEW", HORIZONTAL_ALIGNMENT_LEFT, 238.0, 9, accent if selected else Color(CREAM, 0.48))
+	var wave_rect := Rect2(rect.position + Vector2(24.0, 72.0), Vector2(258.0, 27.0))
 	draw_line(Vector2(wave_rect.position.x, wave_rect.get_center().y), Vector2(wave_rect.end.x, wave_rect.get_center().y), Color(CREAM, 0.10), 1.0, true)
 	var points := PackedVector2Array()
 	for point_index in range(49):
@@ -2292,7 +2444,7 @@ func _draw_ball_sound_card(sound_index: int) -> void:
 		var frequency: float = float([5.5, 4.0, 10.0, 3.0, 7.0][sound_index])
 		var secondary := sin(ratio * TAU * (frequency * 1.7 + 1.0)) * (0.42 if sound_index == 2 else 0.20)
 		var wave_sample := (sin(ratio * TAU * frequency) + secondary) * envelope
-		points.append(Vector2(lerpf(wave_rect.position.x, wave_rect.end.x, ratio), wave_rect.get_center().y - wave_sample * 25.0))
+		points.append(Vector2(lerpf(wave_rect.position.x, wave_rect.end.x, ratio), wave_rect.get_center().y - wave_sample * 11.0))
 	if points.size() > 1:
 		draw_polyline(points, accent, 2.2, true)
 
