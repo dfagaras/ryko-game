@@ -1733,11 +1733,11 @@ func _draw_header() -> void:
 	_draw_panel_frame(rect, Color(PANEL, 0.985), Color(CREAM, 0.78), 3.0)
 	draw_line(Vector2(rect.position.x + 16.0, 126.0), Vector2(rect.end.x - 16.0, 126.0), Color(MUTED, 0.52), 1.0, true)
 	draw_string(fallback_font, Vector2(48.0, 50.0), "ROUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(CREAM, 0.62))
-	_draw_alien_number(str(turn), Vector2(89.0, 88.0), 38.0, AMBER, 3.4)
+	_draw_centered_label(str(turn), Vector2(89.0, 88.0), 34, AMBER)
 	_draw_centered_label("RYKO", Vector2(W * 0.5, 51.0), 25, CREAM)
 	_draw_centered_label("ENDLESS // SECTOR %02d" % maxi(1, int(ceil(float(turn) / 10.0))), Vector2(W * 0.5, 87.0), 12, Color(AQUA, 0.88))
 	draw_string(fallback_font, Vector2(W - 132.0, 50.0), "BALLS", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(CREAM, 0.62))
-	_draw_alien_number(str(ball_count), Vector2(W - 86.0, 88.0), 38.0, CORAL, 3.4)
+	_draw_centered_label(str(ball_count), Vector2(W - 86.0, 88.0), 34, CORAL)
 	_draw_centered_label("COSMIC NOTE // %04d" % (run_seed % 10000), Vector2(W * 0.5, 139.0), 10, Color(CREAM, 0.42))
 
 
@@ -1843,7 +1843,9 @@ func _draw_blocks() -> void:
 				inner_points,
 				triangle_fill.lerp(CREAM, hit_flash_ratio * 0.32)
 			)
-		_draw_alien_number(hp, label_center, 30.0, label_color, 3.0)
+		# HP must remain calm and readable over every shape. Triangles use a
+		# slightly smaller size because their visual centre has less horizontal room.
+		_draw_centered_label(hp, label_center, 21 if item["shape"] == "triangle" else 24, label_color)
 
 
 func _draw_cell_texture(texture: Texture2D, rect: Rect2, alpha: float = 1.0) -> void:
@@ -1898,12 +1900,12 @@ func _draw_footer() -> void:
 func _draw_footer_menu_control() -> void:
 	var rect := _menu_button_rect()
 	var center := Vector2(rect.get_center().x, 1179.0)
-	draw_circle(center + Vector2(0.0, 3.0), 29.0, Color(PAPER_SHADOW, 0.72))
-	draw_circle(center, 27.0, Color(PLAYFIELD_BG, 0.98))
-	draw_arc(center, 27.0, 0.0, TAU, 36, Color(CREAM, 0.55), 2.4, true)
+	_draw_console_button_base(center, true, true)
 	for offset in [-8.0, 0.0, 8.0]:
-		draw_line(center + Vector2(-10.0, offset), center + Vector2(10.0, offset), AQUA, 2.8, true)
-	_draw_centered_label("MENU", Vector2(center.x, 1227.0), 11, Color(CREAM, 0.76))
+		draw_line(center + Vector2(-11.0, offset + 1.5), center + Vector2(11.0, offset + 1.5), Color(PAPER_SHADOW, 0.70), 5.0, true)
+		draw_line(center + Vector2(-11.0, offset), center + Vector2(11.0, offset), Color(AQUA, 0.92), 3.0, true)
+		draw_circle(center + Vector2(-11.0, offset), 1.6, Color(CREAM, 0.52))
+	_draw_centered_label("MENU", Vector2(center.x, 1229.0), 11, Color(CREAM, 0.86))
 
 
 func _draw_footer_recall_control() -> void:
@@ -1911,27 +1913,52 @@ func _draw_footer_recall_control() -> void:
 	var center := Vector2(rect.get_center().x, 1179.0)
 	var enabled := state == TurnState.FIRING
 	var accent := AQUA if enabled else Color(MUTED, 0.38)
-	draw_circle(center + Vector2(0.0, 3.0), 29.0, Color(PAPER_SHADOW, 0.72))
-	draw_circle(center, 27.0, Color(PLAYFIELD_BG, 0.98))
-	draw_arc(center, 27.0, 0.0, TAU, 36, Color(CREAM, 0.48), 2.4, true)
-	draw_arc(center, 13.0, -PI * 0.72, PI * 0.72, 24, accent, 3.0, true)
-	var tip := center + Vector2(-11.0, -9.0)
-	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(10.0, 0.0), tip + Vector2(4.0, 9.0)]), accent)
-	_draw_centered_label("RECALL", Vector2(center.x, 1227.0), 11, Color(CREAM, 0.76 if enabled else 0.34))
+	_draw_console_button_base(center, enabled, false)
+	draw_arc(center, 15.0, -PI * 0.70, PI * 0.78, 28, Color(PAPER_SHADOW, 0.72), 6.0, true)
+	draw_arc(center, 15.0, -PI * 0.70, PI * 0.78, 28, accent, 3.6, true)
+	var tip := center + Vector2(-13.0, -10.0)
+	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(11.0, 1.0), tip + Vector2(4.0, 10.0)]), accent)
+	_draw_centered_label("RECALL", Vector2(center.x, 1229.0), 11, Color(CREAM, 0.86 if enabled else 0.38))
+
+
+func _draw_console_button_base(center: Vector2, enabled: bool, aqua_ring: bool) -> void:
+	var ring := AQUA if aqua_ring else AMBER
+	if not enabled:
+		ring = Color(MUTED, 0.42)
+	draw_circle(center + Vector2(0.0, 4.0), 33.0, Color(PAPER_SHADOW, 0.86))
+	draw_circle(center, 32.0, Color(CREAM, 0.78))
+	draw_circle(center, 29.0, Color(BG, 1.0))
+	draw_circle(center, 25.0, Color(PLAYFIELD_BG, 1.0))
+	draw_arc(center, 29.0, PI * 1.06, PI * 1.94, 24, Color(CREAM, 0.72), 2.0, true)
+	draw_arc(center, 25.0, -PI * 0.05, PI * 0.95, 24, Color(PAPER_SHADOW, 0.88), 2.5, true)
+	draw_arc(center, 27.0, -PI * 0.82, PI * 0.25, 20, Color(ring, 0.76), 2.0, true)
 
 
 func _draw_radio_console(rect: Rect2) -> void:
-	draw_rect(rect, Color(BG, 0.64), true)
-	draw_rect(rect, Color(CREAM, 0.38), false, 1.5, true)
-	_draw_centered_label("RADIO", Vector2(rect.get_center().x, rect.position.y + 16.0), 11, Color(CREAM, 0.74))
-	# Speaker grille, kept visually weighted to the left as in the approved board.
-	var speaker_center := Vector2(rect.position.x + 48.0, rect.position.y + 66.0)
-	draw_circle(speaker_center, 30.0, Color(PLAYFIELD_BG, 0.96))
-	draw_arc(speaker_center, 30.0, 0.0, TAU, 36, Color(CREAM, 0.42), 2.0, true)
-	for y_offset in [-16.0, -8.0, 0.0, 8.0, 16.0]:
-		var half_width := sqrt(maxf(0.0, 25.0 * 25.0 - y_offset * y_offset))
-		draw_line(speaker_center + Vector2(-half_width, y_offset), speaker_center + Vector2(half_width, y_offset), Color(AQUA, 0.48), 1.5, true)
-	var wave_rect := Rect2(rect.position + Vector2(91.0, 40.0), Vector2(231.0, 48.0))
+	# Recessed metal faceplate with a second inner lip and four fasteners.
+	draw_rect(Rect2(rect.position + Vector2(0.0, 3.0), rect.size), Color(PAPER_SHADOW, 0.90), true)
+	draw_rect(rect, Color(CREAM, 0.66), true)
+	draw_rect(rect.grow(-3.0), Color(PANEL, 1.0), true)
+	draw_rect(rect.grow(-8.0), Color(AMBER, 0.25), false, 1.3, true)
+	for screw in [rect.position + Vector2(11, 11), Vector2(rect.end.x - 11, rect.position.y + 11), Vector2(rect.position.x + 11, rect.end.y - 11), rect.end - Vector2(11, 11)]:
+		draw_circle(screw, 4.2, Color(CREAM, 0.72))
+		draw_circle(screw, 2.8, Color(PAPER_SHADOW, 0.90))
+		draw_line(screw - Vector2(2, 2), screw + Vector2(2, 2), Color(CREAM, 0.56), 1.0, true)
+	_draw_centered_label("RADIO", Vector2(rect.get_center().x, rect.position.y + 16.0), 11, Color(CREAM, 0.88))
+	# Octagonal speaker housing, matching the industrial radio reference.
+	var speaker_center := Vector2(rect.position.x + 49.0, rect.position.y + 66.0)
+	var speaker_outer := _regular_polygon(speaker_center, 32.0, 8, PI / 8.0)
+	var speaker_inner := _regular_polygon(speaker_center, 27.0, 8, PI / 8.0)
+	draw_colored_polygon(speaker_outer, Color(CREAM, 0.62))
+	draw_colored_polygon(speaker_inner, Color(BG, 1.0))
+	for y_offset in [-17.0, -11.0, -5.0, 1.0, 7.0, 13.0]:
+		var half_width := sqrt(maxf(0.0, 23.0 * 23.0 - y_offset * y_offset))
+		draw_line(speaker_center + Vector2(-half_width, y_offset + 1.5), speaker_center + Vector2(half_width, y_offset + 1.5), Color(PAPER_SHADOW, 0.92), 3.8, true)
+		draw_line(speaker_center + Vector2(-half_width, y_offset), speaker_center + Vector2(half_width, y_offset), Color(AQUA, 0.42), 1.5, true)
+	var wave_rect := Rect2(rect.position + Vector2(91.0, 38.0), Vector2(232.0, 52.0))
+	draw_rect(wave_rect.grow(4.0), Color(CREAM, 0.38), true)
+	draw_rect(wave_rect.grow(1.5), Color(BG, 1.0), true)
+	_draw_radio_scope_grid(wave_rect)
 	_draw_radio_waveform(wave_rect)
 	var status := "READY"
 	if radio_clear_elapsed < RADIO_CLEAR_DURATION:
@@ -1942,25 +1969,58 @@ func _draw_radio_console(rect: Rect2) -> void:
 		status = "ROW SHIFT"
 	_draw_centered_label(status, Vector2(wave_rect.get_center().x, rect.position.y + 103.0), 9, Color(AQUA, 0.72))
 	# Reserved physical control: visible and tactile, intentionally non-functional.
-	var knob_center := Vector2(rect.end.x - 39.0, rect.position.y + 66.0)
-	draw_circle(knob_center + Vector2(0.0, 3.0), 25.0, Color(PAPER_SHADOW, 0.72))
-	draw_circle(knob_center, 24.0, Color(PLAYFIELD_BG, 1.0))
-	draw_arc(knob_center, 24.0, 0.0, TAU, 32, Color(AMBER, 0.68), 2.4, true)
-	draw_arc(knob_center, 13.0, 0.0, TAU, 28, Color(CREAM, 0.52), 2.0, true)
-	draw_line(knob_center, knob_center + Vector2(0.0, -11.0), AMBER, 2.5, true)
-	draw_circle(knob_center + Vector2(20.0, -24.0), 2.8, Color(CORAL, 0.88))
+	var knob_center := Vector2(rect.end.x - 39.0, rect.position.y + 67.0)
+	draw_circle(knob_center + Vector2(0.0, 4.0), 27.0, Color(PAPER_SHADOW, 0.90))
+	draw_circle(knob_center, 26.0, Color(AMBER, 0.72))
+	draw_circle(knob_center, 22.0, Color(BG, 1.0))
+	draw_circle(knob_center, 17.0, Color(AQUA, 0.56))
+	draw_arc(knob_center, 17.0, PI, TAU, 24, Color(CREAM, 0.62), 2.0, true)
+	draw_line(knob_center, knob_center + Vector2(0.0, -14.0), Color(CREAM, 0.82), 2.4, true)
+	# Radio-wave marks make this read as a receiver control, not a generic circle.
+	draw_arc(knob_center + Vector2(0.0, -25.0), 9.0, PI * 1.17, PI * 1.83, 12, Color(AMBER, 0.76), 1.8, true)
+	draw_arc(knob_center + Vector2(0.0, -25.0), 15.0, PI * 1.20, PI * 1.80, 14, Color(AMBER, 0.54), 1.6, true)
+	draw_circle(knob_center + Vector2(21.0, -25.0), 3.2, Color(CORAL, 0.92))
+
+
+func _regular_polygon(center: Vector2, radius: float, sides: int, rotation: float = 0.0) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for index in range(sides):
+		var angle := rotation + TAU * float(index) / float(sides)
+		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
+	return points
+
+
+func _draw_radio_scope_grid(rect: Rect2) -> void:
+	for index in range(1, 6):
+		var x := lerpf(rect.position.x, rect.end.x, float(index) / 6.0)
+		draw_line(Vector2(x, rect.position.y), Vector2(x, rect.end.y), Color(AMBER, 0.10), 1.0, true)
+	for index in range(1, 4):
+		var y := lerpf(rect.position.y, rect.end.y, float(index) / 4.0)
+		draw_line(Vector2(rect.position.x, y), Vector2(rect.end.x, y), Color(AQUA, 0.10), 1.0, true)
+	for index in range(19):
+		var x := lerpf(rect.position.x, rect.end.x, float(index) / 18.0)
+		draw_line(Vector2(x, rect.position.y), Vector2(x, rect.position.y + (4.0 if index % 3 == 0 else 2.0)), Color(CREAM, 0.22), 1.0, true)
 
 
 func _draw_radio_waveform(rect: Rect2) -> void:
 	draw_line(Vector2(rect.position.x, rect.get_center().y), Vector2(rect.end.x, rect.get_center().y), Color(CREAM, 0.12), 1.0, true)
 	var points := PackedVector2Array()
-	var point_count := 58
+	var point_count := 72
 	var clear_active := radio_clear_elapsed < RADIO_CLEAR_DURATION
 	for index in range(point_count):
 		var ratio := float(index) / float(point_count - 1)
 		var history := (1.0 - ratio) * 0.20
-		var idle := sin(radio_phase * 1.7 + ratio * TAU * 2.0) * 1.6
-		var hit := sin(radio_phase * 5.2 + ratio * TAU * 7.0) * radio_hit_energy * 8.5
+		# Multi-frequency interference plus narrow pulses reads as a weak radio
+		# transmission. It intentionally avoids the old smooth sine-line look.
+		var static_signal := (
+			sin(ratio * 53.0 + radio_phase * 1.8) * 1.15
+			+ sin(ratio * 119.0 - radio_phase * 0.9) * 0.72
+			+ sin(ratio * 211.0 + 0.7) * 0.36
+		)
+		var pulse_a := exp(-pow((ratio - 0.24) / 0.035, 2.0)) * sin(ratio * 180.0 + radio_phase * 2.0) * 4.2
+		var pulse_b := exp(-pow((ratio - 0.68) / 0.045, 2.0)) * sin(ratio * 155.0 - radio_phase) * 3.4
+		var idle := static_signal + pulse_a + pulse_b
+		var hit := sin(radio_phase * 6.0 + ratio * TAU * 9.0) * radio_hit_energy * 8.0
 		var clear_signal := 0.0
 		if clear_active:
 			clear_signal = _happy_radio_sample(radio_clear_elapsed - history) * 17.0
