@@ -64,6 +64,15 @@ const SUPERNOVA_BALL_RATIO := 0.20
 const SUPERNOVA_EXPLOSION_RADIUS := CELL * 0.75
 const SUPERNOVA_EFFECT_DURATION := 0.36
 const BLOCK_HIT_FLASH_DURATION := 0.12
+const SETTINGS_PATH := "user://ryko_settings.cfg"
+const BACKGROUND_NAMES := [
+	"STAR CHART",
+	"MISSION LOG",
+	"COSMIC BLUEPRINT",
+	"ALIEN DOODLES",
+	"DEEP-SPACE MAP",
+	"SIGNAL NAVIGATION"
+]
 
 const BG := Color("#071419")
 const PLAYFIELD_BG := Color("#10262b")
@@ -128,6 +137,9 @@ var ghost_cores: Array[Dictionary] = []
 var supernova_cores: Array[Dictionary] = []
 var supernova_effects: Array[Dictionary] = []
 var supernova_charged_count := 0
+var menu_open := false
+var menu_page := 0
+var selected_background := 0
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
@@ -135,8 +147,22 @@ var run_seed := 0
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
+	_load_settings()
 	_create_boundaries()
 	_start_new_run()
+
+
+func _load_settings() -> void:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_PATH) != OK:
+		return
+	selected_background = clampi(int(config.get_value("visual", "background", 0)), 0, BACKGROUND_NAMES.size() - 1)
+
+
+func _save_settings() -> void:
+	var config := ConfigFile.new()
+	config.set_value("visual", "background", selected_background)
+	config.save(SETTINGS_PATH)
 
 
 func _create_boundaries() -> void:
@@ -526,7 +552,82 @@ func _orient_triangle_points(points: PackedVector2Array, orientation: String) ->
 	return result
 
 
+func _menu_button_rect() -> Rect2:
+	return Rect2(Vector2(28.0, H - 90.0), Vector2(132.0, 58.0))
+
+
+func _menu_theme_rect(index: int) -> Rect2:
+	var column := index % 3
+	var row := index / 3
+	return Rect2(Vector2(48.0 + column * 208.0, 150.0 + row * 122.0), Vector2(192.0, 102.0))
+
+
+func _menu_restart_rect() -> Rect2:
+	return Rect2(Vector2(48.0, 420.0), Vector2(192.0, 64.0))
+
+
+func _menu_legend_rect() -> Rect2:
+	return Rect2(Vector2(264.0, 420.0), Vector2(192.0, 64.0))
+
+
+func _menu_resume_rect() -> Rect2:
+	return Rect2(Vector2(480.0, 420.0), Vector2(192.0, 64.0))
+
+
+func _legend_back_rect() -> Rect2:
+	return Rect2(Vector2(260.0, 1190.0), Vector2(200.0, 58.0))
+
+
+func _open_menu() -> void:
+	menu_open = true
+	menu_page = 0
+	is_aiming = false
+	pull_distance = 0.0
+	pull_strength = 0.0
+	queue_redraw()
+
+
+func _handle_menu_press(pointer: Vector2) -> void:
+	if menu_page == 1:
+		if _legend_back_rect().has_point(pointer):
+			menu_page = 0
+			queue_redraw()
+		return
+
+	for index in range(BACKGROUND_NAMES.size()):
+		if _menu_theme_rect(index).has_point(pointer):
+			selected_background = index
+			_save_settings()
+			queue_redraw()
+			return
+
+	if _menu_restart_rect().has_point(pointer):
+		menu_open = false
+		_start_new_run()
+	elif _menu_legend_rect().has_point(pointer):
+		menu_page = 1
+		queue_redraw()
+	elif _menu_resume_rect().has_point(pointer):
+		menu_open = false
+		queue_redraw()
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	var pressed_position := Vector2(-1.0, -1.0)
+	if event is InputEventScreenTouch and event.pressed:
+		pressed_position = event.position
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		pressed_position = event.position
+
+	if menu_open:
+		if pressed_position.x >= 0.0:
+			_handle_menu_press(pressed_position)
+		return
+
+	if pressed_position.x >= 0.0 and _menu_button_rect().has_point(pressed_position):
+		_open_menu()
+		return
+
 	if state == TurnState.GAME_OVER:
 		if event is InputEventScreenTouch and event.pressed:
 			_start_new_run()
@@ -672,6 +773,8 @@ func _spawn_volley_ball() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if menu_open:
+		return
 	_update_ion_beam_effects(delta)
 	_update_supernova_effects(delta)
 	_update_block_hit_flashes(delta)
@@ -1252,6 +1355,10 @@ func _draw() -> void:
 		_draw_recall_button()
 	if state == TurnState.GAME_OVER:
 		_draw_game_over()
+	if not menu_open:
+		_draw_menu_button()
+	else:
+		_draw_menu_overlay()
 
 
 func _draw_playfield() -> void:
@@ -1262,6 +1369,7 @@ func _draw_playfield() -> void:
 	)
 	draw_rect(playfield_rect, PLAYFIELD_BG, true)
 	_draw_paper_texture(playfield_rect, Color(PAPER_FIBER, 0.07), 72)
+	_draw_selected_background(playfield_rect)
 	var wall_color := Color(CREAM, 0.78)
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
 	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
@@ -1289,6 +1397,133 @@ func _draw_paper_texture(area: Rect2, color: Color, sample_count: int) -> void:
 		var fiber_length := 2.0 + float(index % 5) * 1.7
 		var direction := Vector2(1.0, 0.18 if index % 2 == 0 else -0.12)
 		draw_line(start, start + direction * fiber_length, color, 1.0, true)
+
+
+func _draw_selected_background(area: Rect2) -> void:
+	match selected_background:
+		0:
+			_draw_star_chart_background(area)
+		1:
+			_draw_mission_log_background(area)
+		2:
+			_draw_blueprint_background(area)
+		3:
+			_draw_alien_doodle_background(area)
+		4:
+			_draw_deep_space_background(area)
+		5:
+			_draw_signal_navigation_background(area)
+
+
+func _draw_constellation(points: PackedVector2Array, color: Color) -> void:
+	for index in range(points.size() - 1):
+		draw_line(points[index], points[index + 1], color, 1.2, true)
+	for point in points:
+		draw_circle(point, 2.2, color)
+
+
+func _draw_star_chart_background(_area: Rect2) -> void:
+	var ink := Color(AMBER, 0.13)
+	_draw_constellation(PackedVector2Array([
+		Vector2(55, 236), Vector2(83, 214), Vector2(107, 252), Vector2(139, 228), Vector2(157, 270)
+	]), ink)
+	_draw_constellation(PackedVector2Array([
+		Vector2(50, 932), Vector2(79, 954), Vector2(105, 925), Vector2(138, 968)
+	]), ink)
+	_draw_constellation(PackedVector2Array([
+		Vector2(574, 284), Vector2(603, 259), Vector2(632, 302), Vector2(662, 278)
+	]), ink)
+	draw_arc(Vector2(608, 974), 54.0, PI * 0.82, TAU * 1.10, 28, Color(AQUA, 0.10), 1.5, true)
+	draw_arc(Vector2(608, 974), 37.0, PI * 0.74, TAU * 1.14, 28, Color(CREAM, 0.09), 1.2, true)
+	draw_arc(Vector2(100, 350), 48.0, PI * 0.80, TAU * 1.08, 24, Color(CREAM, 0.08), 1.2, true)
+
+
+func _draw_mission_log_background(_area: Rect2) -> void:
+	var note := Color(CREAM, 0.105)
+	var aqua_note := Color(AQUA, 0.095)
+	draw_string(fallback_font, Vector2(48, 230), "LOG 3173", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, note)
+	draw_string(fallback_font, Vector2(48, 250), "R.Y.K.O.", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, note)
+	draw_string(fallback_font, Vector2(48, 270), "ENDLESS TEST", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, note)
+	draw_string(fallback_font, Vector2(48, 772), "COURSE 214°", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, aqua_note)
+	draw_string(fallback_font, Vector2(48, 792), "ΔV 2.73", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, aqua_note)
+	draw_string(fallback_font, Vector2(575, 228), "REV. 2.1", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, note)
+	draw_arc(Vector2(607, 292), 34.0, 0.0, TAU, 30, note, 1.4, true)
+	draw_arc(Vector2(607, 292), 25.0, 0.0, TAU, 26, note, 1.0, true)
+	draw_line(Vector2(579, 292), Vector2(635, 292), note, 1.0, true)
+	draw_line(Vector2(607, 264), Vector2(607, 320), note, 1.0, true)
+	draw_rect(Rect2(48, 824, 76, 36), note, false, 1.2, true)
+	draw_string(fallback_font, Vector2(59, 848), "FUEL OK", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, note)
+
+
+func _draw_blueprint_background(area: Rect2) -> void:
+	var ink := Color(AQUA, 0.105)
+	draw_rect(area.grow(-18.0), ink, false, 1.0, true)
+	for corner in [Vector2(92, 300), Vector2(625, 292), Vector2(94, 972), Vector2(623, 974)]:
+		draw_arc(corner, 58.0, 0.0, TAU, 36, ink, 1.0, true)
+		draw_arc(corner, 37.0, 0.0, TAU, 32, ink, 1.0, true)
+		draw_line(corner - Vector2(67, 0), corner + Vector2(67, 0), ink, 1.0, true)
+		draw_line(corner - Vector2(0, 67), corner + Vector2(0, 67), ink, 1.0, true)
+	for y in range(220, 1030, 80):
+		draw_line(Vector2(35, y), Vector2(45, y), ink, 1.0, true)
+		draw_line(Vector2(675, y), Vector2(685, y), ink, 1.0, true)
+	draw_string(fallback_font, Vector2(585, 360), "X:+27.4", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ink)
+	draw_string(fallback_font, Vector2(585, 378), "Y:-18.6", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ink)
+
+
+func _draw_alien_doodle_background(_area: Rect2) -> void:
+	var ink := Color(AMBER, 0.13)
+	var aqua_ink := Color(AQUA, 0.10)
+	# Small UFO and alien glyphs stay on the margins so they cannot be read as pickups.
+	_draw_ellipse(Vector2(85, 260), Vector2(31, 10), ink, 1.4, 28)
+	draw_arc(Vector2(85, 255), 14.0, PI, TAU, 18, ink, 1.4, true)
+	draw_line(Vector2(57, 274), Vector2(48, 284), ink, 1.0, true)
+	draw_line(Vector2(113, 274), Vector2(122, 284), ink, 1.0, true)
+	for index in range(5):
+		var center := Vector2(58, 410 + index * 82)
+		draw_colored_polygon(PackedVector2Array([
+			center + Vector2(0, -11), center + Vector2(10, 0), center + Vector2(0, 11), center + Vector2(-10, 0)
+		]), Color(AQUA, 0.055))
+		draw_arc(center, 11.0, 0.0, TAU, 20, aqua_ink, 1.0, true)
+	for index in range(4):
+		var x := 568.0 + index * 26.0
+		draw_line(Vector2(x, 232), Vector2(x + 10, 250), ink, 1.3, true)
+		draw_line(Vector2(x + 10, 250), Vector2(x, 268), ink, 1.3, true)
+	_draw_doodle_planet(Vector2(610, 925), 32.0, Color(AMBER, 0.12))
+	_draw_doodle_star(Vector2(636, 800), 10.0, Color(AQUA, 0.10))
+
+
+func _draw_deep_space_background(_area: Rect2) -> void:
+	# Overlapping translucent ink washes create a printed nebula without glow or photography.
+	for index in range(14):
+		var center := Vector2(92.0 + float((index * 47) % 530), 230.0 + float((index * 83) % 760))
+		var radius := 42.0 + float(index % 4) * 19.0
+		var color := Color(AQUA, 0.018 + float(index % 3) * 0.008)
+		if index % 3 == 1:
+			color = Color(PHASE_BLUE, 0.020 + float(index % 2) * 0.009)
+		elif index % 3 == 2:
+			color = Color(CORAL, 0.014)
+		draw_circle(center, radius, color)
+	for point in [Vector2(63, 250), Vector2(146, 315), Vector2(622, 238), Vector2(657, 522), Vector2(92, 872), Vector2(581, 963)]:
+		_draw_doodle_star(point, 4.0, Color(CREAM, 0.12))
+
+
+func _draw_signal_navigation_background(_area: Rect2) -> void:
+	var ink := Color(AQUA, 0.115)
+	var amber_ink := Color(AMBER, 0.105)
+	draw_string(fallback_font, Vector2(48, 228), "SIGNAL LOCK", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ink)
+	var waveform := PackedVector2Array([
+		Vector2(48, 258), Vector2(65, 258), Vector2(72, 246), Vector2(79, 276),
+		Vector2(88, 238), Vector2(98, 270), Vector2(108, 252), Vector2(123, 258), Vector2(154, 258)
+	])
+	draw_polyline(waveform, ink, 1.4, true)
+	draw_string(fallback_font, Vector2(575, 228), "FREQ:7.38", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ink)
+	draw_string(fallback_font, Vector2(575, 248), "GAIN:2.1", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ink)
+	draw_arc(Vector2(103, 956), 66.0, PI, TAU * 1.22, 32, ink, 1.2, true)
+	draw_arc(Vector2(103, 956), 44.0, PI, TAU * 1.22, 28, ink, 1.0, true)
+	draw_line(Vector2(103, 956), Vector2(152, 912), ink, 1.0, true)
+	draw_string(fallback_font, Vector2(574, 880), "COORD.", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, amber_ink)
+	draw_string(fallback_font, Vector2(574, 900), "X:+27.4", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, amber_ink)
+	draw_string(fallback_font, Vector2(574, 920), "Y:-18.6", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, amber_ink)
 
 
 func _draw_cosmic_doodles() -> void:
@@ -1543,6 +1778,159 @@ func _draw_recall_button() -> void:
 	_draw_centered_label("RECALL", Vector2(rect.position.x + 85.0, rect.get_center().y), 16, CREAM)
 
 
+func _draw_menu_button() -> void:
+	var rect := _menu_button_rect()
+	draw_rect(rect, Color(PANEL, 0.96), true)
+	draw_rect(rect, Color(CREAM, 0.52), false, 2.0, true)
+	var icon_center := Vector2(rect.position.x + 27.0, rect.get_center().y)
+	for offset in [-9.0, 0.0, 9.0]:
+		draw_line(icon_center + Vector2(-9.0, offset), icon_center + Vector2(9.0, offset), AQUA, 2.5, true)
+	_draw_centered_label("MENU", Vector2(rect.position.x + 86.0, rect.get_center().y), 16, CREAM)
+
+
+func _draw_menu_overlay() -> void:
+	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), Color(BG, 0.965), true)
+	var panel := Rect2(24.0, 24.0, W - 48.0, H - 48.0)
+	draw_rect(panel, Color(PANEL, 0.985), true)
+	draw_rect(panel, Color(CREAM, 0.76), false, 3.0, true)
+	_draw_paper_texture(panel.grow(-4.0), Color(PAPER_FIBER, 0.065), 84)
+
+	if menu_page == 1:
+		_draw_legend_page()
+		return
+
+	_draw_centered_label("RYKO MENU", Vector2(W * 0.5, 68.0), 28, CREAM)
+	_draw_centered_label("SELECT NIGHT SKY PAPER", Vector2(W * 0.5, 111.0), 14, Color(AQUA, 0.90))
+	for index in range(BACKGROUND_NAMES.size()):
+		_draw_theme_card(index)
+
+	_draw_menu_action_button(_menu_restart_rect(), "RESTART", CORAL)
+	_draw_menu_action_button(_menu_legend_rect(), "LEGEND", AMBER)
+	_draw_menu_action_button(_menu_resume_rect(), "RESUME", AQUA)
+	_draw_centered_label("BACKGROUND SELECTION IS SAVED ON THIS DEVICE", Vector2(W * 0.5, 525.0), 11, Color(CREAM, 0.48))
+	_draw_menu_mission_notes()
+
+
+func _draw_theme_card(index: int) -> void:
+	var rect := _menu_theme_rect(index)
+	var selected := index == selected_background
+	draw_rect(rect, Color(PLAYFIELD_BG, 0.96), true)
+	draw_rect(rect, AQUA if selected else Color(CREAM, 0.48), false, 4.0 if selected else 2.0, true)
+	var icon_center := Vector2(rect.get_center().x, rect.position.y + 37.0)
+	var subtle := Color(CREAM, 0.42)
+	match index:
+		0:
+			_draw_constellation(PackedVector2Array([
+				icon_center + Vector2(-35, 9), icon_center + Vector2(-16, -12), icon_center + Vector2(5, 6), icon_center + Vector2(30, -9)
+			]), Color(AMBER, 0.58))
+		1:
+			for line_index in range(3):
+				draw_line(icon_center + Vector2(-35, -12 + line_index * 11), icon_center + Vector2(18, -12 + line_index * 11), subtle, 2.0, true)
+			draw_arc(icon_center + Vector2(31, 0), 13.0, 0.0, TAU, 20, Color(AMBER, 0.52), 2.0, true)
+		2:
+			draw_arc(icon_center, 29.0, 0.0, TAU, 28, Color(AQUA, 0.62), 2.0, true)
+			draw_arc(icon_center, 17.0, 0.0, TAU, 24, Color(AQUA, 0.45), 1.5, true)
+			draw_line(icon_center + Vector2(-38, 0), icon_center + Vector2(38, 0), Color(AQUA, 0.52), 1.5, true)
+		3:
+			draw_colored_polygon(PackedVector2Array([
+				icon_center + Vector2(0, -24), icon_center + Vector2(25, 18), icon_center + Vector2(-25, 18)
+			]), Color(PHASE_BLUE, 0.62))
+			draw_circle(icon_center + Vector2(-8, 3), 4.0, CREAM)
+			draw_circle(icon_center + Vector2(8, 3), 4.0, CREAM)
+		4:
+			for blob_index in range(5):
+				var blob_center := icon_center + Vector2(-28 + blob_index * 14, -10 + (blob_index % 2) * 17)
+				draw_circle(blob_center, 18.0, Color(AQUA if blob_index % 2 == 0 else PHASE_BLUE, 0.22))
+		5:
+			var wave := PackedVector2Array([
+				icon_center + Vector2(-38, 0), icon_center + Vector2(-22, 0), icon_center + Vector2(-14, -17),
+				icon_center + Vector2(-4, 18), icon_center + Vector2(8, -10), icon_center + Vector2(20, 5), icon_center + Vector2(38, 0)
+			])
+			draw_polyline(wave, Color(AQUA, 0.68), 2.5, true)
+	_draw_centered_label("%02d  %s" % [index + 1, BACKGROUND_NAMES[index]], Vector2(rect.get_center().x, rect.end.y - 22.0), 12, CREAM)
+
+
+func _draw_menu_action_button(rect: Rect2, label: String, accent: Color) -> void:
+	draw_rect(rect, Color(PLAYFIELD_BG, 0.98), true)
+	draw_rect(rect, accent, false, 3.0, true)
+	_draw_centered_label(label, rect.get_center(), 17, CREAM)
+
+
+func _draw_menu_mission_notes() -> void:
+	var ink := Color(CREAM, 0.11)
+	draw_string(fallback_font, Vector2(58, 610), "MISSION CONTROL NOTES", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(AMBER, 0.54))
+	for line_index in range(7):
+		var y := 646.0 + line_index * 56.0
+		draw_line(Vector2(58, y), Vector2(W - 58, y), ink, 1.0, true)
+	draw_string(fallback_font, Vector2(70, 680), "KEEP THE TRAJECTORY SIMPLE.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.26))
+	draw_string(fallback_font, Vector2(70, 736), "SPECIAL BLOCKS ARE SOLID SIGNALS.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.22))
+	draw_string(fallback_font, Vector2(70, 792), "NORMAL SHAPES KEEP THE PAPER VISIBLE.", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(CREAM, 0.18))
+	_draw_doodle_planet(Vector2(580, 932), 48.0, Color(AQUA, 0.17))
+	_draw_doodle_star(Vector2(112, 978), 18.0, Color(AMBER, 0.18))
+
+
+func _draw_legend_page() -> void:
+	_draw_centered_label("FIELD LEGEND", Vector2(W * 0.5, 67.0), 28, CREAM)
+	_draw_centered_label("BLOCKS", Vector2(195.0, 112.0), 15, AMBER)
+	_draw_centered_label("POWERS", Vector2(525.0, 112.0), 15, AQUA)
+
+	_draw_legend_item(Rect2(44, 138, 306, 175), "NORMAL SHAPES", ["Each hit removes 1 HP.", "Triangles never have special effects."], "normal")
+	_draw_legend_item(Rect2(44, 325, 306, 155), "DOUBLE METAL", ["Starts with twice the round HP."], "dense")
+	_draw_legend_item(Rect2(44, 492, 306, 155), "REGENERATIVE", ["Gains 50% HP after every", "turn it survives."], "regenerative")
+	_draw_legend_item(Rect2(44, 659, 306, 155), "PHASE BLOCK", ["Alternates between solid and", "intangible every turn."], "phase")
+	_draw_legend_item(Rect2(44, 826, 306, 210), "BLACK HOLE", ["Coral intake marks show which", "sides absorb a ball on contact.", "Unmarked sides bounce normally."], "black_hole")
+
+	_draw_legend_item(Rect2(370, 138, 306, 155), "+ BALL", ["Adds one ball to the next volley."], "plus")
+	_draw_legend_item(Rect2(370, 305, 306, 175), "ION BEAM", ["Each ball crossing it damages", "the full marked row or column."], "ion")
+	_draw_legend_item(Rect2(370, 492, 306, 175), "GHOST CORE", ["Balls pass through blocks for", "the rest of the current volley."], "ghost")
+	_draw_legend_item(Rect2(370, 679, 306, 205), "SUPERNOVA", ["Charges 20% of the volley.", "Charged impacts also damage", "nearby blocks."], "supernova")
+
+	_draw_menu_action_button(_legend_back_rect(), "BACK", AQUA)
+
+
+func _draw_legend_item(rect: Rect2, title: String, description: Array, icon_kind: String) -> void:
+	draw_rect(rect, Color(PLAYFIELD_BG, 0.76), true)
+	draw_rect(rect, Color(CREAM, 0.20), false, 1.5, true)
+	var icon_rect := Rect2(rect.position + Vector2(14, 18), Vector2(58, 58))
+	match icon_kind:
+		"normal":
+			draw_rect(icon_rect.grow(-6.0), AMBER, false, 4.0, true)
+			var triangle_center := icon_rect.get_center() + Vector2(0, 67)
+			draw_polyline(PackedVector2Array([
+				triangle_center + Vector2(-18, 16), triangle_center + Vector2(18, 16),
+				triangle_center + Vector2(-18, -20), triangle_center + Vector2(-18, 16)
+			]), CORAL, 4.0, true)
+		"dense":
+			_draw_cell_texture(ICON_BLOCK_DENSE, icon_rect)
+		"regenerative":
+			_draw_cell_texture(ICON_BLOCK_REGENERATIVE, icon_rect)
+		"phase":
+			_draw_cell_texture(ICON_BLOCK_PHASE, icon_rect)
+		"black_hole":
+			_draw_cell_texture(ICON_BLOCK_BLACK_HOLE, icon_rect)
+			draw_line(icon_rect.position + Vector2(0, 29), icon_rect.position + Vector2(9, 29), CORAL, 5.0, true)
+			draw_line(icon_rect.end - Vector2(9, 29), icon_rect.end - Vector2(0, 29), CORAL, 5.0, true)
+		"plus":
+			_draw_cell_texture(ICON_POWER_PLUS_ONE, icon_rect)
+		"ion":
+			_draw_cell_texture(ICON_POWER_ION, icon_rect)
+		"ghost":
+			_draw_cell_texture(ICON_POWER_GHOST, icon_rect)
+		"supernova":
+			_draw_cell_texture(ICON_POWER_SUPERNOVA, icon_rect)
+	draw_string(fallback_font, rect.position + Vector2(84, 39), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, CREAM)
+	for line_index in range(description.size()):
+		draw_string(
+			fallback_font,
+			rect.position + Vector2(84, 67 + line_index * 20),
+			String(description[line_index]),
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			11,
+			Color(CREAM, 0.72)
+		)
+
+
 func _draw_centered_label(text: String, center: Vector2, font_size: int, color: Color) -> void:
 	var text_size := fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var baseline := center + Vector2(-text_size.x * 0.5, text_size.y * 0.34)
@@ -1766,13 +2154,54 @@ func _draw_ion_beam_effects() -> void:
 
 
 func _draw_launcher() -> void:
-	draw_circle(launcher, 13.0, Color(PANEL, 1.0))
-	draw_arc(launcher, 13.0, 0, TAU, 32, AQUA, 3.0)
-	var tip := launcher + aim_direction * 48.0
-	var side := aim_direction.orthogonal()
-	draw_line(launcher + aim_direction * 12.0, tip, AQUA, 5.0, true)
-	draw_line(tip, tip - aim_direction * 14.0 + side * 9.0, AQUA, 4.0, true)
-	draw_line(tip, tip - aim_direction * 14.0 - side * 9.0, AQUA, 4.0, true)
+	# Launcher 03: a narrow symmetrical shuttle cannon. It is intentionally
+	# drawn from geometry so it rotates perfectly with the aim direction.
+	var forward := aim_direction.normalized()
+	var side := forward.orthogonal()
+	var base := launcher
+	var body_points := PackedVector2Array([
+		base - side * 17.0,
+		base + forward * 11.0 - side * 13.0,
+		base + forward * 44.0 - side * 5.5,
+		base + forward * 53.0,
+		base + forward * 44.0 + side * 5.5,
+		base + forward * 11.0 + side * 13.0,
+		base + side * 17.0
+	])
+	draw_colored_polygon(body_points, Color(PANEL, 0.98))
+	var body_outline := body_points.duplicate()
+	body_outline.append(body_points[0])
+	draw_polyline(body_outline, CREAM, 3.0, true)
+
+	var left_fin := PackedVector2Array([
+		base - side * 15.0,
+		base + forward * 10.0 - side * 12.0,
+		base + forward * 29.0 - side * 20.0,
+		base + forward * 8.0 - side * 22.0
+	])
+	var right_fin := PackedVector2Array()
+	for point in left_fin:
+		var relative := point - base
+		right_fin.append(base + forward * relative.dot(forward) - side * relative.dot(side))
+	draw_colored_polygon(left_fin, Color(PHASE_BLUE, 0.88))
+	draw_colored_polygon(right_fin, Color(PHASE_BLUE, 0.88))
+	draw_polyline(PackedVector2Array([left_fin[0], left_fin[1], left_fin[2], left_fin[3], left_fin[0]]), CORAL, 2.2, true)
+	draw_polyline(PackedVector2Array([right_fin[0], right_fin[1], right_fin[2], right_fin[3], right_fin[0]]), CORAL, 2.2, true)
+
+	var core_center := base + forward * 23.0
+	var core_points := PackedVector2Array([
+		core_center + forward * 10.0,
+		core_center - forward * 8.0 - side * 8.0,
+		core_center - forward * 8.0 + side * 8.0
+	])
+	draw_colored_polygon(core_points, Color(AQUA, 0.82))
+	draw_polyline(PackedVector2Array([core_points[0], core_points[1], core_points[2], core_points[0]]), AMBER, 2.0, true)
+
+	var muzzle := base + forward * 49.0
+	draw_line(base + forward * 28.0, muzzle, CREAM, 5.0, true)
+	draw_circle(muzzle, 6.0, CORAL)
+	draw_circle(muzzle, 2.6, CREAM)
+	draw_line(base - side * 20.0, base + side * 20.0, Color(CREAM, 0.66), 3.0, true)
 
 
 func _draw_game_over() -> void:
