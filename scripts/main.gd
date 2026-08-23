@@ -1320,9 +1320,10 @@ func _draw_ghost_cores() -> void:
 		var center: Vector2 = core["position"]
 		var color := Color(CORAL, 0.82) if bool(core["activated"]) else GHOST_PURPLE
 		draw_circle(center, GHOST_CORE_RADIUS, Color(PANEL, 0.90))
-		# Broken, offset rings make the pickup readable without relying on text.
-		draw_arc(center + Vector2(-2.0, 0.0), 15.0, -PI * 0.82, PI * 0.28, 22, color, 4.0, true)
-		draw_arc(center + Vector2(2.0, 0.0), 11.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 3.0, true)
+		# Two concentric broken rings with opposite openings read as a deliberate
+		# portal; sharing the exact center prevents a false misalignment.
+		draw_arc(center, 15.0, -PI * 0.82, PI * 0.28, 22, color, 4.0, true)
+		draw_arc(center, 10.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 3.0, true)
 		draw_circle(center, 3.0, color)
 
 
