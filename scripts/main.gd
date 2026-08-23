@@ -58,12 +58,6 @@ const ION_BEAM_RADIUS := 20.0
 const ION_BEAM_EFFECT_DURATION := 0.30
 const GHOST_CORE_START_TURN := 8
 const GHOST_CORE_RADIUS := 20.0
-const SUPERNOVA_CORE_START_TURN := 10
-const SUPERNOVA_CORE_RADIUS := 22.0
-const SUPERNOVA_BALL_RATIO := 0.20
-const SUPERNOVA_EXPLOSION_RADIUS := CELL * 0.75
-const SUPERNOVA_EFFECT_DURATION := 0.36
-const BLOCK_HIT_FLASH_DURATION := 0.12
 
 const BG := Color("#08191c")
 const PLAYFIELD_BG := Color("#0b2225")
@@ -77,8 +71,6 @@ const VOID_DARK := Color("#020608")
 const PHASE_BLUE := Color("#78a8ff")
 const ION_BLUE := Color("#32d8ff")
 const GHOST_PURPLE := Color("#b58cff")
-const NOVA_RED := Color("#ff4058")
-const NOVA_ORANGE := Color("#ff8a38")
 const MUTED := Color("#55777a")
 const CREAM := Color("#f3e7c5")
 
@@ -110,9 +102,6 @@ var pickups: Array[Dictionary] = []
 var ion_powers: Array[Dictionary] = []
 var ion_beam_effects: Array[Dictionary] = []
 var ghost_cores: Array[Dictionary] = []
-var supernova_cores: Array[Dictionary] = []
-var supernova_effects: Array[Dictionary] = []
-var supernova_charged_count := 0
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
@@ -188,9 +177,6 @@ func _clear_run_objects() -> void:
 	ion_powers.clear()
 	ion_beam_effects.clear()
 	ghost_cores.clear()
-	supernova_cores.clear()
-	supernova_effects.clear()
-	supernova_charged_count = 0
 
 
 func _cell_center(column: int, row: int) -> Vector2:
@@ -288,7 +274,7 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 	})
 
 	# Keep the permanent +1 pickup, then assign powers only to remaining empty
-	# cells. Different powers can coexist when the row has enough room.
+	# cells. Ion Beam and Ghost Core can coexist when the row has enough room.
 	var next_power_index := block_count + 1
 	if next_power_index < COLUMN_COUNT and rng.randf() < _ion_beam_spawn_chance():
 		var ion_column := columns[next_power_index]
@@ -309,17 +295,6 @@ func _spawn_row(hp: int, row: int = 0) -> void:
 			"row": row,
 			"position": _spawn_position(ghost_column, row),
 			"activated": false
-		})
-		next_power_index += 1
-
-	if next_power_index < COLUMN_COUNT and rng.randf() < _supernova_core_spawn_chance():
-		var supernova_column := columns[next_power_index]
-		supernova_cores.append({
-			"column": supernova_column,
-			"row": row,
-			"position": _spawn_position(supernova_column, row),
-			"activated": false,
-			"pulse_elapsed": SUPERNOVA_EFFECT_DURATION
 		})
 
 
@@ -387,12 +362,6 @@ func _ghost_core_spawn_chance() -> float:
 	if turn < GHOST_CORE_START_TURN:
 		return 0.0
 	return 0.18
-
-
-func _supernova_core_spawn_chance() -> float:
-	if turn < SUPERNOVA_CORE_START_TURN:
-		return 0.0
-	return 0.12
 
 
 func _choose_black_hole_sides() -> Array[String]:
@@ -598,7 +567,6 @@ func _launch_volley() -> void:
 	active_ball_count = 0
 	launch_timer = 0.0
 	first_return_recorded = false
-	supernova_charged_count = 0
 	next_launcher_x = launcher.x
 	balls.clear()
 	queue_redraw()
@@ -654,7 +622,6 @@ func _spawn_volley_ball() -> void:
 		"velocity": volley_direction * BALL_SPEED,
 		"returned": false,
 		"ghost": false,
-		"supernova": false,
 		"ghost_blocks_inside": {}
 	})
 	launched_ball_count += 1
@@ -663,9 +630,6 @@ func _spawn_volley_ball() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_ion_beam_effects(delta)
-	_update_supernova_effects(delta)
-	_update_block_hit_flashes(delta)
-	_update_supernova_core_pulses(delta)
 	if state == TurnState.ADVANCING:
 		_process_board_advance(delta)
 		queue_redraw()
@@ -694,17 +658,13 @@ func _physics_process(delta: float) -> void:
 			var collider := collision.get_collider()
 			if collider is StaticBody2D and collider.get_meta("kind", "") == "block":
 				var should_absorb := _block_absorbs_ball(collider, collision.get_normal())
-				if bool(entry.get("supernova", false)):
-					_trigger_supernova_explosion(_block_position_from_body(collider))
-				else:
-					_hit_block(collider)
+				_hit_block(collider)
 				if should_absorb:
 					_consume_ball(entry)
 					continue
 
 		_collect_pickups_at(body.position)
 		_activate_ion_powers_at(body)
-		_activate_supernova_cores_at(entry)
 		_activate_ghost_cores_at(entry)
 		_damage_blocks_crossed_by_ghost(entry, previous_position)
 		if body.position.y > RETURN_Y + 32.0:
@@ -724,19 +684,11 @@ func _hit_block(body: StaticBody2D) -> void:
 	var block_body: StaticBody2D = item["body"] as StaticBody2D
 	if not is_instance_valid(block_body):
 		return
-	item["hit_flash"] = BLOCK_HIT_FLASH_DURATION
 	item["hp"] = int(item["hp"]) - 1
 	if int(item["hp"]) <= 0:
 		block_body.collision_layer = 0
 		block_body.queue_free()
 		item["body"] = null
-
-
-func _block_position_from_body(body: StaticBody2D) -> Vector2:
-	var index := int(body.get_meta("block_index", -1))
-	if index < 0 or index >= blocks.size():
-		return body.position
-	return blocks[index]["position"]
 
 
 func _block_absorbs_ball(body: StaticBody2D, collision_normal: Vector2) -> bool:
@@ -793,31 +745,6 @@ func _activate_ion_powers_at(ball: CharacterBody2D) -> void:
 		_fire_ion_beam(power_position, String(power["orientation"]))
 
 
-func _supernova_charge_limit() -> int:
-	return maxi(1, int(floor(float(ball_count) * SUPERNOVA_BALL_RATIO)))
-
-
-func _supernova_remaining_charges() -> int:
-	return maxi(0, _supernova_charge_limit() - supernova_charged_count)
-
-
-func _activate_supernova_cores_at(entry: Dictionary) -> void:
-	if bool(entry.get("supernova", false)) or _supernova_remaining_charges() <= 0:
-		return
-	var body: CharacterBody2D = entry["body"] as CharacterBody2D
-	if not is_instance_valid(body):
-		return
-	for core in supernova_cores:
-		var core_position: Vector2 = core["position"]
-		if body.position.distance_to(core_position) > SUPERNOVA_CORE_RADIUS + BALL_RADIUS:
-			continue
-		entry["supernova"] = true
-		supernova_charged_count += 1
-		core["activated"] = true
-		core["pulse_elapsed"] = 0.0
-		return
-
-
 func _activate_ghost_cores_at(entry: Dictionary) -> void:
 	var body: CharacterBody2D = entry["body"] as CharacterBody2D
 	if not is_instance_valid(body):
@@ -852,10 +779,7 @@ func _damage_blocks_crossed_by_ghost(entry: Dictionary, previous_position: Vecto
 		var crossed := _ghost_path_crosses_block(previous_position, body.position, item)
 		if crossed and not blocks_inside.has(block_id):
 			blocks_inside[block_id] = true
-			if bool(entry.get("supernova", false)):
-				_trigger_supernova_explosion(item["position"])
-			else:
-				_hit_block(block_body)
+			_hit_block(block_body)
 		if not currently_inside:
 			blocks_inside.erase(block_id)
 
@@ -892,65 +816,6 @@ func _ghost_point_overlaps_block(point: Vector2, item: Dictionary) -> bool:
 	return false
 
 
-func _trigger_supernova_explosion(center: Vector2) -> void:
-	supernova_effects.append({
-		"position": center,
-		"elapsed": 0.0
-	})
-	# Keep the visual queue bounded during dense late-game volleys.
-	if supernova_effects.size() > 48:
-		supernova_effects.pop_front()
-
-	var targets: Array[StaticBody2D] = []
-	for item in blocks:
-		var block_body: StaticBody2D = item["body"] as StaticBody2D
-		if not is_instance_valid(block_body):
-			continue
-		if String(item.get("variant", "normal")) == "phase" and not bool(item.get("phase_active", true)):
-			continue
-		if _circle_intersects_block(center, SUPERNOVA_EXPLOSION_RADIUS, item):
-			targets.append(block_body)
-
-	for target in targets:
-		if is_instance_valid(target):
-			_hit_block(target)
-
-
-func _circle_intersects_block(center: Vector2, radius: float, item: Dictionary) -> bool:
-	var block_center: Vector2 = item["position"]
-	if String(item["shape"]) == "square":
-		var rect := Rect2(block_center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
-		var closest := Vector2(
-			clampf(center.x, rect.position.x, rect.end.x),
-			clampf(center.y, rect.position.y, rect.end.y)
-		)
-		return center.distance_squared_to(closest) <= radius * radius
-
-	var polygon := PackedVector2Array()
-	for local_point in _triangle_local_points(String(item["orientation"])):
-		polygon.append(block_center + local_point)
-	if Geometry2D.is_point_in_polygon(center, polygon):
-		return true
-	for point in polygon:
-		if center.distance_squared_to(point) <= radius * radius:
-			return true
-	for index in range(polygon.size()):
-		var start := polygon[index]
-		var end := polygon[(index + 1) % polygon.size()]
-		if _distance_to_segment(center, start, end) <= radius:
-			return true
-	return false
-
-
-func _distance_to_segment(point: Vector2, start: Vector2, end: Vector2) -> float:
-	var segment := end - start
-	var length_squared := segment.length_squared()
-	if length_squared <= 0.0001:
-		return point.distance_to(start)
-	var amount := clampf((point - start).dot(segment) / length_squared, 0.0, 1.0)
-	return point.distance_to(start + segment * amount)
-
-
 func _fire_ion_beam(beam_position: Vector2, orientation: String) -> void:
 	ion_beam_effects.append({
 		"position": beam_position,
@@ -982,29 +847,6 @@ func _update_ion_beam_effects(delta: float) -> void:
 	ion_beam_effects = active_effects
 
 
-func _update_supernova_effects(delta: float) -> void:
-	var active_effects: Array[Dictionary] = []
-	for effect in supernova_effects:
-		effect["elapsed"] = float(effect["elapsed"]) + delta
-		if float(effect["elapsed"]) < SUPERNOVA_EFFECT_DURATION:
-			active_effects.append(effect)
-	supernova_effects = active_effects
-
-
-func _update_block_hit_flashes(delta: float) -> void:
-	for item in blocks:
-		if float(item.get("hit_flash", 0.0)) > 0.0:
-			item["hit_flash"] = maxf(0.0, float(item["hit_flash"]) - delta)
-
-
-func _update_supernova_core_pulses(delta: float) -> void:
-	for core in supernova_cores:
-		core["pulse_elapsed"] = minf(
-			SUPERNOVA_EFFECT_DURATION,
-			float(core.get("pulse_elapsed", SUPERNOVA_EFFECT_DURATION)) + delta
-		)
-
-
 func _return_ball(entry: Dictionary) -> void:
 	var body: CharacterBody2D = entry["body"] as CharacterBody2D
 	if not first_return_recorded:
@@ -1019,7 +861,6 @@ func _return_ball(entry: Dictionary) -> void:
 func _finish_volley() -> void:
 	_regenerate_surviving_blocks()
 	balls.clear()
-	supernova_charged_count = 0
 	launcher.x = next_launcher_x
 	launcher.y = RETURN_Y
 	ball_count += pending_ball_bonus
@@ -1061,12 +902,6 @@ func _begin_board_advance() -> void:
 			remaining_ghost_cores.append(core)
 	ghost_cores = remaining_ghost_cores
 
-	var remaining_supernova_cores: Array[Dictionary] = []
-	for core in supernova_cores:
-		if not bool(core["activated"]):
-			remaining_supernova_cores.append(core)
-	supernova_cores = remaining_supernova_cores
-
 	turn += 1
 	_spawn_row(turn, -1)
 
@@ -1094,13 +929,6 @@ func _begin_board_advance() -> void:
 		power["move_to"] = _cell_center(int(power["column"]), target_row)
 
 	for core in ghost_cores:
-		var target_row := int(core["row"]) + 1
-		core["row"] = target_row
-		var core_position: Vector2 = core["position"]
-		core["move_from"] = core_position
-		core["move_to"] = _cell_center(int(core["column"]), target_row)
-
-	for core in supernova_cores:
 		var target_row := int(core["row"]) + 1
 		core["row"] = target_row
 		var core_position: Vector2 = core["position"]
@@ -1150,11 +978,6 @@ func _process_board_advance(delta: float) -> void:
 		var move_to: Vector2 = core["move_to"]
 		core["position"] = move_from.lerp(move_to, eased)
 
-	for core in supernova_cores:
-		var move_from: Vector2 = core["move_from"]
-		var move_to: Vector2 = core["move_to"]
-		core["position"] = move_from.lerp(move_to, eased)
-
 	if progress < 1.0:
 		return
 
@@ -1195,15 +1018,6 @@ func _process_board_advance(delta: float) -> void:
 			visible_ghost_cores.append(core)
 	ghost_cores = visible_ghost_cores
 
-	var visible_supernova_cores: Array[Dictionary] = []
-	for core in supernova_cores:
-		core.erase("move_from")
-		core.erase("move_to")
-		var core_position: Vector2 = core["position"]
-		if core_position.y < LAUNCH_LINE_Y:
-			visible_supernova_cores.append(core)
-	supernova_cores = visible_supernova_cores
-
 	if reached_danger:
 		state = TurnState.GAME_OVER
 		is_aiming = false
@@ -1225,9 +1039,7 @@ func _draw() -> void:
 	_draw_pickups()
 	_draw_ion_powers()
 	_draw_ghost_cores()
-	_draw_supernova_cores()
 	_draw_ion_beam_effects()
-	_draw_supernova_effects()
 
 	if state == TurnState.AIMING:
 		_draw_launcher()
@@ -1268,26 +1080,13 @@ func _draw_active_balls() -> void:
 		var body: CharacterBody2D = entry["body"] as CharacterBody2D
 		if not is_instance_valid(body):
 			continue
-		var is_ghost := bool(entry.get("ghost", false))
-		var is_supernova := bool(entry.get("supernova", false))
-		var velocity: Vector2 = entry["velocity"]
-		var trail_end := body.position - velocity.normalized() * 24.0
-		if is_ghost and is_supernova:
-			draw_line(trail_end, body.position, Color(GHOST_PURPLE, 0.30), 9.0, true)
-			draw_line(trail_end, body.position, Color(NOVA_ORANGE, 0.58), 4.0, true)
-			draw_circle(body.position, BALL_RADIUS + 2.0, Color(GHOST_PURPLE, 0.30))
-			draw_arc(body.position, BALL_RADIUS + 1.0, 0.0, TAU, 24, Color(NOVA_RED, 0.90), 3.0, true)
-			draw_circle(body.position, 4.0, Color(CREAM, 0.88))
-		elif is_ghost:
+		if bool(entry.get("ghost", false)):
+			var velocity: Vector2 = entry["velocity"]
+			var trail_end := body.position - velocity.normalized() * 24.0
 			draw_line(trail_end, body.position, Color(GHOST_PURPLE, 0.28), 6.0, true)
 			draw_circle(body.position, BALL_RADIUS, Color(GHOST_PURPLE, 0.42))
 			draw_arc(body.position, BALL_RADIUS, 0.0, TAU, 24, Color(CREAM, 0.78), 2.0, true)
 			draw_circle(body.position, 3.0, Color(CREAM, 0.62))
-		elif is_supernova:
-			draw_line(trail_end, body.position, Color(NOVA_ORANGE, 0.46), 7.0, true)
-			draw_circle(body.position, BALL_RADIUS + 3.0, Color(NOVA_RED, 0.18))
-			draw_circle(body.position, BALL_RADIUS, NOVA_RED)
-			draw_circle(body.position, 4.0, CREAM)
 		else:
 			draw_circle(body.position, BALL_RADIUS, AQUA)
 			draw_circle(body.position, 4.0, CREAM)
@@ -1366,7 +1165,6 @@ func _draw_blocks() -> void:
 		var is_phase := variant == "phase"
 		var phase_active := bool(item.get("phase_active", true))
 		var phase_alpha := 1.0 if phase_active else 0.28
-		var hit_flash_ratio := clampf(float(item.get("hit_flash", 0.0)) / BLOCK_HIT_FLASH_DURATION, 0.0, 1.0)
 		var label_color := CREAM if not is_phase or phase_active else Color(CREAM, 0.38)
 		if item["shape"] == "square":
 			var rect := Rect2(center - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
@@ -1381,14 +1179,12 @@ func _draw_blocks() -> void:
 				border_color = VOID_PURPLE
 			elif is_phase:
 				border_color = Color(PHASE_BLUE, phase_alpha)
-			border_color = border_color.lerp(CREAM, hit_flash_ratio)
 			# Draw the border as an outer solid shape plus an inset fill. Unlike a
 			# centered stroke, this can never overlap a neighbouring cell.
 			draw_rect(rect, border_color, true)
-			var square_fill := Color(PANEL, 0.22) if is_phase and not phase_active else PANEL
 			draw_rect(
 				rect.grow(-BLOCK_OUTLINE_WIDTH),
-				square_fill.lerp(CREAM, hit_flash_ratio * 0.32),
+				Color(PANEL, 0.22) if is_phase and not phase_active else PANEL,
 				true
 			)
 			if is_dense:
@@ -1417,13 +1213,10 @@ func _draw_blocks() -> void:
 			var inner_points := PackedVector2Array()
 			for point in inner_local_points:
 				inner_points.append(center + point)
-			var triangle_border := Color(PHASE_BLUE, phase_alpha) if is_phase else CORAL
-			triangle_border = triangle_border.lerp(CREAM, hit_flash_ratio)
-			var triangle_fill := Color(PANEL, 0.22) if is_phase and not phase_active else PANEL
-			draw_colored_polygon(points, triangle_border)
+			draw_colored_polygon(points, Color(PHASE_BLUE, phase_alpha) if is_phase else CORAL)
 			draw_colored_polygon(
 				inner_points,
-				triangle_fill.lerp(CREAM, hit_flash_ratio * 0.32)
+				Color(PANEL, 0.22) if is_phase and not phase_active else PANEL
 			)
 			if is_phase:
 				_draw_centered_label("P", label_center + Vector2(0.0, -24.0), 13, Color(PHASE_BLUE, phase_alpha))
@@ -1532,114 +1325,6 @@ func _draw_ghost_cores() -> void:
 		draw_arc(center, 15.0, -PI * 0.82, PI * 0.28, 22, color, 4.0, true)
 		draw_arc(center, 10.0, PI * 0.18, PI * 1.24, 18, Color(CREAM, 0.82), 3.0, true)
 		draw_circle(center, 3.0, color)
-
-
-func _draw_supernova_cores() -> void:
-	var remaining := _supernova_remaining_charges()
-	for core in supernova_cores:
-		var center: Vector2 = core["position"]
-		var is_exhausted := remaining <= 0
-		var core_color := Color(MUTED, 0.72) if is_exhausted else NOVA_RED
-		draw_circle(center, SUPERNOVA_CORE_RADIUS, Color(PANEL, 0.94))
-		draw_arc(center, 18.0, -PI * 0.18, PI * 1.32, 28, core_color, 3.0, true)
-		draw_arc(center, 13.0, PI * 0.42, PI * 1.86, 24, NOVA_ORANGE if not is_exhausted else MUTED, 2.0, true)
-
-		var star_points := PackedVector2Array()
-		for index in range(12):
-			var angle := -PI * 0.5 + TAU * float(index) / 12.0
-			var radius := 8.0 if index % 2 == 0 else 4.5
-			star_points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-		draw_colored_polygon(star_points, core_color)
-		_draw_centered_label(str(remaining), center, 12, CREAM)
-
-		var pulse_progress := clampf(
-			float(core.get("pulse_elapsed", SUPERNOVA_EFFECT_DURATION)) / SUPERNOVA_EFFECT_DURATION,
-			0.0,
-			1.0
-		)
-		if pulse_progress < 1.0:
-			var pulse_radius := lerpf(20.0, 38.0, pulse_progress)
-			draw_arc(center, pulse_radius, 0.0, TAU, 32, Color(NOVA_ORANGE, 1.0 - pulse_progress), 3.0, true)
-
-
-func _draw_supernova_effects() -> void:
-	for effect in supernova_effects:
-		var center: Vector2 = effect["position"]
-		var progress := clampf(float(effect["elapsed"]) / SUPERNOVA_EFFECT_DURATION, 0.0, 1.0)
-		var eased := 1.0 - pow(1.0 - progress, 2.0)
-		var fade := 1.0 - progress
-		var wave_radius := lerpf(10.0, SUPERNOVA_EXPLOSION_RADIUS, eased)
-
-		if progress < 0.24:
-			var flash_fade := 1.0 - progress / 0.24
-			draw_circle(center, lerpf(15.0, 5.0, progress / 0.24), Color(CREAM, flash_fade * 0.90))
-
-		_draw_board_clipped_ring(center, wave_radius, Color(NOVA_RED, fade * 0.94), 5.0, 64)
-		_draw_board_clipped_ring(center, wave_radius * 0.72, Color(NOVA_ORANGE, fade * 0.72), 3.0, 52)
-
-		for index in range(10):
-			var angle := TAU * float(index) / 10.0 + 0.19
-			var direction := Vector2(cos(angle), sin(angle))
-			var ray_start := center + direction * wave_radius * 0.28
-			var ray_end := center + direction * wave_radius * (1.0 if index % 2 == 0 else 0.78)
-			_draw_board_clipped_line(ray_start, ray_end, Color(NOVA_ORANGE, fade * 0.82), 3.0)
-
-		for index in range(8):
-			var angle := TAU * float(index) / 8.0 + 0.43
-			var particle_position := center + Vector2(cos(angle), sin(angle)) * wave_radius * 0.88
-			if _is_inside_board(particle_position, 3.0):
-				draw_circle(particle_position, 2.5 + float(index % 2), Color(CREAM, fade * 0.76))
-
-
-func _draw_board_clipped_ring(center: Vector2, radius: float, color: Color, width: float, segments: int) -> void:
-	for index in range(segments):
-		var first_angle := TAU * float(index) / float(segments)
-		var second_angle := TAU * float(index + 1) / float(segments)
-		var first := center + Vector2(cos(first_angle), sin(first_angle)) * radius
-		var second := center + Vector2(cos(second_angle), sin(second_angle)) * radius
-		_draw_board_clipped_line(first, second, color, width)
-
-
-func _draw_board_clipped_line(from: Vector2, to: Vector2, color: Color, width: float) -> void:
-	var clipped := _clip_segment_to_board(from, to)
-	if clipped.size() == 2:
-		draw_line(clipped[0], clipped[1], color, width, true)
-
-
-func _clip_segment_to_board(from: Vector2, to: Vector2) -> PackedVector2Array:
-	var delta := to - from
-	var minimum := 0.0
-	var maximum := 1.0
-	var tests := [
-		Vector2(-delta.x, from.x - BOARD_LEFT),
-		Vector2(delta.x, BOARD_RIGHT - from.x),
-		Vector2(-delta.y, from.y - BOARD_TOP),
-		Vector2(delta.y, LAUNCH_LINE_Y - from.y)
-	]
-	for test in tests:
-		var direction := test.x
-		var distance := test.y
-		if absf(direction) < 0.0001:
-			if distance < 0.0:
-				return PackedVector2Array()
-			continue
-		var amount := distance / direction
-		if direction < 0.0:
-			minimum = maxf(minimum, amount)
-		else:
-			maximum = minf(maximum, amount)
-		if minimum > maximum:
-			return PackedVector2Array()
-	return PackedVector2Array([from + delta * minimum, from + delta * maximum])
-
-
-func _is_inside_board(point: Vector2, margin: float = 0.0) -> bool:
-	return (
-		point.x >= BOARD_LEFT + margin
-		and point.x <= BOARD_RIGHT - margin
-		and point.y >= BOARD_TOP + margin
-		and point.y <= LAUNCH_LINE_Y - margin
-	)
 
 
 func _draw_ion_beam_effects() -> void:
