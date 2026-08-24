@@ -1,10 +1,40 @@
 extends "res://scripts/main.gd"
 
-# Header follows the exact same runtime pattern as the footer UI assets:
-# Godot imports a normal PNG and the game draws that texture directly.
-const HEADER_ART_TEXTURE: Texture2D = preload("res://assets/ui/header_composite_2d.png")
+# Header assets follow the same pattern as the footer: normal imported PNGs,
+# preloaded once and drawn directly. Only the values are dynamic.
+const HEADER_BOARD_TEXTURE: Texture2D = preload("res://assets/ui/board.png")
+const HEADER_ROUND_TEXTURE: Texture2D = preload("res://assets/ui/round.png")
+const HEADER_SCORE_TEXTURE: Texture2D = preload("res://assets/ui/score.png")
+const HEADER_BALLS_TEXTURE: Texture2D = preload("res://assets/ui/bals.png")
+
+const HEADER_HEIGHT := 207.0
+const HEADER_BOARD_RECT := Rect2(50.0, 0.0, 620.0, 206.6667)
+const HEADER_ROUND_RECT := Rect2(61.0, 82.0, 138.0, 103.5)
+const HEADER_SCORE_RECT := Rect2(199.0, 75.0, 321.0, 107.0)
+const HEADER_BALLS_RECT := Rect2(520.0, 82.0, 138.0, 103.5)
 
 var score: int = 0
+
+
+func _update_responsive_layout() -> void:
+	# Start from the proven responsive layout and only reserve the extra height
+	# required by the non-stretched illustrated header.
+	super._update_responsive_layout()
+	var safe_insets := _safe_vertical_insets(layout_viewport_size)
+	var header_target_y := safe_insets.x
+	var footer_target_y := layout_viewport_size.y - safe_insets.y - 152.0
+	footer_target_y = maxf(1110.0, footer_target_y)
+
+	layout_header_y_offset = header_target_y
+	layout_footer_y_offset = footer_target_y - 1110.0
+
+	var available_top := header_target_y + HEADER_HEIGHT
+	var available_bottom := footer_target_y
+	var board_height := LAUNCH_LINE_Y - BOARD_TOP
+	var centered_board_y := available_top
+	if available_bottom - available_top > board_height:
+		centered_board_y += (available_bottom - available_top - board_height) * 0.5
+	layout_board_y_offset = centered_board_y - BOARD_TOP
 
 
 func _start_new_run() -> void:
@@ -30,15 +60,19 @@ func _hit_block(body: StaticBody2D) -> void:
 
 
 func _draw_header() -> void:
-	# The complete illustrated recycled-space-junk header is a static 2D asset.
-	# It already contains ROUND / SCORE / BALLS labels and blank display glass.
-	# Only the three changing values are rendered by Godot.
-	var header_rect := Rect2(Vector2(28.0, 18.0), Vector2(664.0, 158.0))
-	draw_texture_rect(HEADER_ART_TEXTURE, header_rect, false)
+	# Preserve each source asset's aspect ratio exactly. The board is the base;
+	# the three approved illustrated modules are layered on top.
+	draw_texture_rect(HEADER_BOARD_TEXTURE, HEADER_BOARD_RECT, false)
+	draw_texture_rect(HEADER_ROUND_TEXTURE, HEADER_ROUND_RECT, false)
+	draw_texture_rect(HEADER_SCORE_TEXTURE, HEADER_SCORE_RECT, false)
+	draw_texture_rect(HEADER_BALLS_TEXTURE, HEADER_BALLS_RECT, false)
 
-	_draw_centered_label(str(turn), Vector2(113.0, 104.0), 29, CREAM)
-	_draw_centered_label(_format_score(score), Vector2(356.0, 96.0), 28, AQUA)
-	_draw_centered_label(str(ball_count), Vector2(640.0, 104.0), 26, CREAM)
+	# The artwork already contains all static labels/icons. Only values change.
+	var round_text := str(turn)
+	var balls_text := str(ball_count)
+	_draw_centered_label(round_text, Vector2(130.0, 149.0), 25 if round_text.length() <= 2 else 21, CREAM)
+	_draw_centered_label(_format_score(score), Vector2(348.0, 139.0), 25, AQUA)
+	_draw_centered_label(balls_text, Vector2(624.0, 149.0), 24 if balls_text.length() <= 2 else 20, CREAM)
 
 
 func _format_score(value: int) -> String:

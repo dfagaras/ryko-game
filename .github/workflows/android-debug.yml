@@ -18,18 +18,19 @@ jobs:
       - name: Check out develop
         uses: actions/checkout@v5
 
-      - name: Materialize header PNG
+      - name: Verify header PNG assets
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode assets/ui/header_composite_2d.png.b64.full > assets/ui/header_composite_2d.png
-          test -s assets/ui/header_composite_2d.png
-          magic="$(od -An -tx1 -N8 assets/ui/header_composite_2d.png | tr -d ' \n')"
-          if [ "$magic" != "89504e470d0a1a0a" ]; then
-            echo "Header asset is not a valid PNG. Magic: $magic"
-            exit 1
-          fi
-          echo "Header PNG materialized successfully: $(wc -c < assets/ui/header_composite_2d.png) bytes"
+          for asset in assets/ui/board.png assets/ui/round.png assets/ui/score.png assets/ui/bals.png; do
+            test -s "$asset"
+            magic="$(od -An -tx1 -N8 "$asset" | tr -d ' \n')"
+            if [ "$magic" != "89504e470d0a1a0a" ]; then
+              echo "$asset is not a valid PNG. Magic: $magic"
+              exit 1
+            fi
+            echo "Verified $asset ($(wc -c < "$asset") bytes)"
+          done
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -56,7 +57,7 @@ jobs:
             -keysize 2048 \
             -validity 10000
 
-      - name: Validate Godot project scripts
+      - name: Validate Godot project scripts and resources
         shell: bash
         run: |
           set -euo pipefail
@@ -76,7 +77,7 @@ jobs:
             "$godot_dir/Godot_v4.4.1-stable_linux.x86_64" \
             --headless --path . --editor --quit 2>&1 | tee "$validation_log"
 
-          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Could not preload resource" "$validation_log"; then
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Could not preload resource|Error loading resource|Failed loading resource|Error importing" "$validation_log"; then
             echo "Godot script/resource validation failed."
             exit 1
           fi
