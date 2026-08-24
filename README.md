@@ -1,9 +1,15 @@
 # RYKO
 
-RYKO is a portrait mobile brick-breaker prototype built with Godot 4.
+RYKO is a small endless brick-breaker prototype built in Godot 4.
 
-## Development
+The current prototype focuses on the core feel: one-ball start, a guaranteed `+1` pickup on each new row, square and triangular blocks, drag-to-aim controls, first-ball return positioning, and smooth row descent.
 
-- Main development branch: `develop`
-- Android debug builds are produced by GitHub Actions on pushes to `develop`.
-- The game uses imported 2D PNG assets for illustrated UI elements, with dynamic gameplay values rendered by Godot.
+## Run locally
+
+1. Install Godot 4.x.
+2. Open `project.godot`.
+3. Run the main scene.
+
+## Android
+
+An Android export preset is included in the repository. A GitHub Actions workflow on `develop` exports a debug APK and uploads it as the `ryko-android-debug` artifact for phone testing.
