@@ -18,6 +18,19 @@ jobs:
       - name: Check out develop
         uses: actions/checkout@v5
 
+      - name: Materialize header PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode assets/ui/header_composite_2d.png.b64.full > assets/ui/header_composite_2d.png
+          test -s assets/ui/header_composite_2d.png
+          magic="$(xxd -p -l 8 assets/ui/header_composite_2d.png)"
+          if [ "$magic" != "89504e470d0a1a0a" ]; then
+            echo "Header asset is not a valid PNG. Magic: $magic"
+            exit 1
+          fi
+          echo "Header PNG materialized successfully: $(wc -c < assets/ui/header_composite_2d.png) bytes"
+
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
@@ -63,8 +76,8 @@ jobs:
             "$godot_dir/Godot_v4.4.1-stable_linux.x86_64" \
             --headless --path . --editor --quit 2>&1 | tee "$validation_log"
 
-          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script" "$validation_log"; then
-            echo "Godot script validation failed."
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Could not preload resource" "$validation_log"; then
+            echo "Godot script/resource validation failed."
             exit 1
           fi
 
