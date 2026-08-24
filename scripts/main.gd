@@ -830,7 +830,8 @@ func _radio_scope_outer_rect() -> Rect2:
 
 func _radio_speed_track_rect() -> Rect2:
 	var scope := _radio_scope_outer_rect()
-	return Rect2(scope.position + Vector2(20.0, 12.0), Vector2(scope.size.x - 40.0, 38.0))
+	# Keep every dynamic element comfortably inside the illustrated glass.
+	return Rect2(scope.position + Vector2(28.0, 15.0), Vector2(scope.size.x - 56.0, 32.0))
 
 
 func _radio_speed_interaction_rect() -> Rect2:
@@ -2276,24 +2277,37 @@ func _regular_polygon(center: Vector2, radius: float, sides: int, rotation: floa
 	return points
 
 
-func _draw_radio_speed_control(scope_rect: Rect2, wave_rect: Rect2) -> void:
+func _draw_radio_speed_control(_scope_rect: Rect2, wave_rect: Rect2) -> void:
+	var scale_y := wave_rect.end.y + 8.0
+	draw_line(
+		Vector2(wave_rect.position.x, scale_y),
+		Vector2(wave_rect.end.x, scale_y),
+		Color(AQUA, 0.22),
+		1.0,
+		true
+	)
 	for speed_index in range(BALL_SPEED_MULTIPLIERS.size()):
 		var ratio := _speed_position_for_index(speed_index)
 		var x := lerpf(wave_rect.position.x, wave_rect.end.x, ratio)
-		draw_line(Vector2(x, wave_rect.end.y + 2.0), Vector2(x, wave_rect.end.y + 7.0), Color(AQUA, 0.72), 1.5, true)
-		_draw_centered_label(BALL_SPEED_LABELS[speed_index], Vector2(x, wave_rect.end.y + 15.0), 11, Color(AQUA, 0.92))
+		var is_selected := speed_index == selected_ball_speed
+		var tick_color := Color(CREAM, 0.94) if is_selected else Color(AQUA, 0.58)
+		var label_color := Color(CREAM, 0.98) if is_selected else Color(AQUA, 0.76)
+		draw_line(Vector2(x, scale_y - 4.0), Vector2(x, scale_y + 4.0), tick_color, 2.0 if is_selected else 1.2, true)
+		_draw_centered_label(
+			BALL_SPEED_LABELS[speed_index],
+			Vector2(x, scale_y + 15.0),
+			12 if is_selected else 10,
+			label_color
+		)
 
 	var needle_x := lerpf(wave_rect.position.x, wave_rect.end.x, speed_needle_position)
-	var needle_top := wave_rect.position.y - 1.0
-	var needle_bottom := wave_rect.end.y + 7.0
+	var needle_top := wave_rect.position.y + 2.0
+	var needle_bottom := scale_y + 3.0
 	draw_line(Vector2(needle_x + 1.5, needle_top + 1.5), Vector2(needle_x + 1.5, needle_bottom + 1.5), Color(PAPER_SHADOW, 0.78), 4.0, true)
 	draw_line(Vector2(needle_x, needle_top), Vector2(needle_x, needle_bottom), Color(CORAL, 0.96), 2.2, true)
 	draw_circle(Vector2(needle_x, needle_top), 3.8, Color(CORAL, 0.92))
 	draw_circle(Vector2(needle_x, needle_top), 1.5, CREAM)
 	draw_circle(Vector2(needle_x, needle_bottom), 3.2, Color(CORAL, 0.88))
-
-	var speed_text := "BALL SPEED %sX" % String.num(ball_speed_multiplier, 2)
-	_draw_centered_label(speed_text, Vector2(scope_rect.get_center().x, scope_rect.end.y - 7.0), 10, Color(AQUA, 0.96))
 
 
 func _draw_radio_scope_grid(rect: Rect2) -> void:
@@ -2330,14 +2344,17 @@ func _draw_radio_waveform(rect: Rect2) -> void:
 		var clear_signal := 0.0
 		if clear_active:
 			clear_signal = _happy_radio_sample(radio_clear_elapsed - history) * 17.0
-		var y := rect.get_center().y - idle - hit - clear_signal
+		var y := clampf(rect.get_center().y - idle - hit - clear_signal, rect.position.y + 3.0, rect.end.y - 3.0)
 		points.append(Vector2(lerpf(rect.position.x, rect.end.x, ratio), y))
 	var color := AQUA
 	if clear_active:
 		color = AMBER.lerp(CORAL, 0.35 + sin(radio_phase * 2.0) * 0.15)
 	elif radio_hit_energy > 0.18:
 		color = AQUA.lerp(AMBER, minf(0.68, radio_hit_energy * 0.42))
-	draw_polyline(points, color, 2.4, true)
+	# A soft phosphor bloom under a crisp trace reads like a real radio scope
+	# without turning into a thick neon stripe.
+	draw_polyline(points, Color(color, 0.18), 4.0, true)
+	draw_polyline(points, color, 1.6, true)
 
 
 func _draw_recall_button() -> void:
