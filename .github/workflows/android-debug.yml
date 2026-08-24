@@ -24,7 +24,7 @@ jobs:
           set -euo pipefail
           base64 --decode assets/ui/header_composite_2d.png.b64.full > assets/ui/header_composite_2d.png
           test -s assets/ui/header_composite_2d.png
-          magic="$(xxd -p -l 8 assets/ui/header_composite_2d.png)"
+          magic="$(od -An -tx1 -N8 assets/ui/header_composite_2d.png | tr -d ' \n')"
           if [ "$magic" != "89504e470d0a1a0a" ]; then
             echo "Header asset is not a valid PNG. Magic: $magic"
             exit 1
