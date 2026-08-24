@@ -1,28 +1,10 @@
 extends "res://scripts/main.gd"
 
-const HEADER_ART_PATH := "res://assets/ui/header_full_approved.webp.b64"
+# Header follows the exact same runtime pattern as the footer UI assets:
+# Godot imports a normal PNG and the game draws that texture directly.
+const HEADER_ART_TEXTURE: Texture2D = preload("res://assets/ui/header_composite_2d.png")
 
 var score: int = 0
-var header_art_texture: Texture2D
-
-
-func _ready() -> void:
-	_load_header_art()
-	super._ready()
-
-
-func _load_header_art() -> void:
-	var encoded := FileAccess.get_file_as_string(HEADER_ART_PATH).strip_edges()
-	if encoded.is_empty():
-		push_error("RYKO header artwork is missing or empty")
-		return
-	var raw := Marshalls.base64_to_raw(encoded)
-	var image := Image.new()
-	var load_error := image.load_webp_from_buffer(raw)
-	if load_error != OK:
-		push_error("RYKO header artwork could not be decoded: %s" % load_error)
-		return
-	header_art_texture = ImageTexture.create_from_image(image)
 
 
 func _start_new_run() -> void:
@@ -48,25 +30,15 @@ func _hit_block(body: StaticBody2D) -> void:
 
 
 func _draw_header() -> void:
-	# Use the exact approved illustrated recycled-space-junk header as one
-	# production asset. Only the three changing values are painted dynamically.
-	var header_rect := Rect2(Vector2(28.0, 18.0), Vector2(664.0, 136.0))
-	if is_instance_valid(header_art_texture):
-		draw_texture_rect(header_art_texture, header_rect, false)
-	else:
-		# Safe fallback so a corrupt asset never hides gameplay information.
-		_draw_panel_frame(header_rect, Color(PANEL, 0.985), Color(CREAM, 0.78), 3.0)
+	# The complete illustrated recycled-space-junk header is a static 2D asset.
+	# It already contains ROUND / SCORE / BALLS labels and blank display glass.
+	# Only the three changing values are rendered by Godot.
+	var header_rect := Rect2(Vector2(28.0, 18.0), Vector2(664.0, 158.0))
+	draw_texture_rect(HEADER_ART_TEXTURE, header_rect, false)
 
-	# Cover only the baked demo values from the concept image. These masks sit
-	# inside the illustrated CRT/display glass and preserve all surrounding art.
-	var screen_fill := Color("#06191d", 0.97)
-	_draw_rounded_panel(Rect2(Vector2(73.0, 76.0), Vector2(82.0, 43.0)), screen_fill, Color(AQUA, 0.20), 1.0, 4.0)
-	_draw_rounded_panel(Rect2(Vector2(250.0, 67.0), Vector2(220.0, 55.0)), screen_fill, Color(AQUA, 0.18), 1.0, 5.0)
-	_draw_rounded_panel(Rect2(Vector2(618.0, 76.0), Vector2(55.0, 43.0)), screen_fill, Color(AQUA, 0.18), 1.0, 4.0)
-
-	_draw_centered_label(str(turn), Vector2(114.0, 97.0), 29, CREAM)
-	_draw_centered_label(_format_score(score), Vector2(360.0, 95.0), 29, AQUA)
-	_draw_centered_label(str(ball_count), Vector2(645.0, 97.0), 27, CREAM)
+	_draw_centered_label(str(turn), Vector2(113.0, 104.0), 29, CREAM)
+	_draw_centered_label(_format_score(score), Vector2(356.0, 96.0), 28, AQUA)
+	_draw_centered_label(str(ball_count), Vector2(640.0, 104.0), 26, CREAM)
 
 
 func _format_score(value: int) -> String:
