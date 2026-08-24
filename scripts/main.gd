@@ -198,15 +198,86 @@ var block_hit_audio_cursor := 0
 var fallback_font: Font
 var rng := RandomNumberGenerator.new()
 var run_seed := 0
+var layout_viewport_size := Vector2(W, H)
+var layout_content_x := 0.0
+var layout_header_y_offset := 0.0
+var layout_board_y_offset := 0.0
+var layout_footer_y_offset := 0.0
+var layout_menu_y_offset := 0.0
+var active_draw_offset := Vector2.ZERO
 
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
+	_update_responsive_layout()
 	_load_settings()
 	_apply_loaded_speed_setting()
 	_create_radio_audio()
 	_create_boundaries()
 	_start_new_run()
+
+
+func _on_viewport_size_changed() -> void:
+	_update_responsive_layout()
+	queue_redraw()
+
+
+func _update_responsive_layout() -> void:
+	layout_viewport_size = get_viewport_rect().size
+	if layout_viewport_size.x <= 0.0 or layout_viewport_size.y <= 0.0:
+		layout_viewport_size = Vector2(W, H)
+	layout_content_x = maxf(0.0, (layout_viewport_size.x - W) * 0.5)
+	var safe_insets := _safe_vertical_insets(layout_viewport_size)
+	var header_target_y := safe_insets.x + 18.0
+	var footer_target_y := layout_viewport_size.y - safe_insets.y - 18.0 - 152.0
+	footer_target_y = maxf(1110.0, footer_target_y)
+	layout_header_y_offset = header_target_y - 18.0
+	layout_footer_y_offset = footer_target_y - 1110.0
+	var available_top := header_target_y + 136.0 + 22.0
+	var available_bottom := footer_target_y - 14.0
+	var board_height := LAUNCH_LINE_Y - BOARD_TOP
+	var centered_board_y := available_top
+	if available_bottom - available_top > board_height:
+		centered_board_y += (available_bottom - available_top - board_height) * 0.5
+	layout_board_y_offset = centered_board_y - BOARD_TOP
+	layout_menu_y_offset = maxf(0.0, (layout_viewport_size.y - H) * 0.5)
+
+
+func _safe_vertical_insets(viewport_size: Vector2) -> Vector2:
+	var display_size := Vector2(DisplayServer.screen_get_size())
+	var safe_area := Rect2(DisplayServer.get_display_safe_area())
+	if display_size.x <= 0.0 or display_size.y <= 0.0 or safe_area.size.y <= 0.0:
+		return Vector2.ZERO
+	var scale_y := viewport_size.y / display_size.y
+	return Vector2(
+		maxf(0.0, safe_area.position.y * scale_y),
+		maxf(0.0, (display_size.y - safe_area.end.y) * scale_y)
+	)
+
+
+func _set_draw_offset(offset: Vector2) -> void:
+	active_draw_offset = offset
+	draw_set_transform(offset, 0.0, Vector2.ONE)
+
+
+func _board_screen_rect() -> Rect2:
+	return Rect2(
+		Vector2(layout_content_x + BOARD_LEFT, layout_board_y_offset + BOARD_TOP),
+		Vector2(BOARD_RIGHT - BOARD_LEFT, LAUNCH_LINE_Y - BOARD_TOP)
+	)
+
+
+func _screen_to_board(pointer: Vector2) -> Vector2:
+	return pointer - Vector2(layout_content_x, layout_board_y_offset)
+
+
+func _screen_to_footer(pointer: Vector2) -> Vector2:
+	return pointer - Vector2(layout_content_x, layout_footer_y_offset)
+
+
+func _screen_to_menu(pointer: Vector2) -> Vector2:
+	return pointer - Vector2(layout_content_x, layout_menu_y_offset)
 
 
 func _create_radio_audio() -> void:
@@ -825,7 +896,9 @@ func _menu_button_rect() -> Rect2:
 
 func _radio_scope_outer_rect() -> Rect2:
 	var footer := Rect2(BOARD_LEFT, 1110.0, BOARD_RIGHT - BOARD_LEFT, 152.0)
-	return Rect2(footer.position + Vector2(119.0, 37.0), Vector2(footer.size.x - 238.0, 92.0))
+	# Widen only the central glass by about 4.2%. Speaker and recall knob retain
+	# their approved positions and dimensions.
+	return Rect2(footer.position + Vector2(110.0, 37.0), Vector2(footer.size.x - 220.0, 92.0))
 
 
 func _radio_speed_track_rect() -> Rect2:
@@ -908,31 +981,33 @@ func _finish_speed_needle_drag() -> void:
 
 func _handle_speed_needle_input(event: InputEvent) -> bool:
 	if event is InputEventScreenTouch:
-		if event.pressed and _radio_speed_interaction_rect().has_point(event.position):
+		var pointer := _screen_to_footer(event.position)
+		if event.pressed and _radio_speed_interaction_rect().has_point(pointer):
 			is_dragging_speed_needle = true
-			_update_speed_needle_drag(event.position)
+			_update_speed_needle_drag(pointer)
 			queue_redraw()
 			return true
 		if not event.pressed and is_dragging_speed_needle:
-			_update_speed_needle_drag(event.position)
+			_update_speed_needle_drag(pointer)
 			_finish_speed_needle_drag()
 			return true
 	elif event is InputEventScreenDrag and is_dragging_speed_needle:
-		_update_speed_needle_drag(event.position)
+		_update_speed_needle_drag(_screen_to_footer(event.position))
 		queue_redraw()
 		return true
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed and _radio_speed_interaction_rect().has_point(event.position):
+		var pointer := _screen_to_footer(event.position)
+		if event.pressed and _radio_speed_interaction_rect().has_point(pointer):
 			is_dragging_speed_needle = true
-			_update_speed_needle_drag(event.position)
+			_update_speed_needle_drag(pointer)
 			queue_redraw()
 			return true
 		if not event.pressed and is_dragging_speed_needle:
-			_update_speed_needle_drag(event.position)
+			_update_speed_needle_drag(pointer)
 			_finish_speed_needle_drag()
 			return true
 	elif event is InputEventMouseMotion and is_dragging_speed_needle:
-		_update_speed_needle_drag(event.position)
+		_update_speed_needle_drag(_screen_to_footer(event.position))
 		queue_redraw()
 		return true
 	return false
@@ -997,13 +1072,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if menu_open:
 		if pressed_position.x >= 0.0:
-			_handle_menu_press(pressed_position)
+			_handle_menu_press(_screen_to_menu(pressed_position))
 		return
 
 	if _handle_speed_needle_input(event):
 		return
 
-	if pressed_position.x >= 0.0 and _menu_button_rect().has_point(pressed_position):
+	if pressed_position.x >= 0.0 and _menu_button_rect().has_point(_screen_to_footer(pressed_position)):
 		_open_menu()
 		return
 
@@ -1015,15 +1090,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if state == TurnState.FIRING:
-		if event is InputEventScreenTouch and event.pressed and _recall_button_rect().has_point(event.position):
+		if event is InputEventScreenTouch and event.pressed and _recall_button_rect().has_point(_screen_to_footer(event.position)):
 			_recall_volley()
-		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _recall_button_rect().has_point(event.position):
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _recall_button_rect().has_point(_screen_to_footer(event.position)):
 			_recall_volley()
 		return
 
 	# The radio console is deliberately outside the aiming surface. Its right
 	# control is reserved for a future feature and must not accidentally shoot.
-	if pressed_position.y >= 1110.0:
+	if pressed_position.x >= 0.0 and not _board_screen_rect().has_point(pressed_position):
 		return
 
 	if state != TurnState.AIMING:
@@ -1031,21 +1106,21 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			_begin_aim(event.position)
+			_begin_aim(_screen_to_board(event.position))
 		elif aim_gesture_active:
 			_release_aim()
 		queue_redraw()
 	elif event is InputEventScreenDrag and aim_gesture_active:
-		_update_drag_aim(event.position)
+		_update_drag_aim(_screen_to_board(event.position))
 		queue_redraw()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_begin_aim(event.position)
+			_begin_aim(_screen_to_board(event.position))
 		elif aim_gesture_active:
 			_release_aim()
 		queue_redraw()
 	elif event is InputEventMouseMotion and aim_gesture_active and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		_update_drag_aim(event.position)
+		_update_drag_aim(_screen_to_board(event.position))
 		queue_redraw()
 
 
@@ -1726,10 +1801,16 @@ func _process_board_advance(delta: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), BG)
-	_draw_paper_texture(Rect2(Vector2.ZERO, Vector2(W, H)), Color(PAPER_FIBER, 0.055), 96)
-	_draw_playfield()
+	_update_responsive_layout()
+	_set_draw_offset(Vector2.ZERO)
+	var full_area := Rect2(Vector2.ZERO, layout_viewport_size)
+	_draw_fullscreen_background(full_area)
+
+	_set_draw_offset(Vector2(layout_content_x, layout_header_y_offset))
 	_draw_header()
+
+	_set_draw_offset(Vector2(layout_content_x, layout_board_y_offset))
+	_draw_playfield()
 	_draw_launch_line()
 	_draw_blocks()
 	_draw_pickups()
@@ -1745,11 +1826,39 @@ func _draw() -> void:
 			_draw_aim_guide()
 
 	_draw_active_balls()
+
+	_set_draw_offset(Vector2(layout_content_x, layout_footer_y_offset))
 	_draw_footer()
+
+	_set_draw_offset(Vector2(layout_content_x, layout_board_y_offset))
 	if state == TurnState.GAME_OVER:
 		_draw_game_over()
 	if menu_open:
+		_set_draw_offset(Vector2.ZERO)
+		draw_rect(full_area, Color(BG, 0.965), true)
+		_set_draw_offset(Vector2(layout_content_x, layout_menu_y_offset))
 		_draw_menu_overlay()
+	_set_draw_offset(Vector2.ZERO)
+
+
+func _draw_fullscreen_background(area: Rect2) -> void:
+	draw_rect(area, BG, true)
+	_draw_paper_texture(area, Color(PAPER_FIBER, 0.055), maxi(96, int(area.size.y / 10.0)))
+	if selected_background < 0 or selected_background >= BACKGROUND_TEXTURES.size():
+		return
+	var texture_alpha := 0.82 if selected_background != 4 else 0.70
+	_draw_texture_cover(BACKGROUND_TEXTURES[selected_background], area, Color(1.0, 1.0, 1.0, texture_alpha))
+	draw_rect(area, Color(BG, 0.10 if selected_background != 4 else 0.16), true)
+
+
+func _draw_texture_cover(texture: Texture2D, area: Rect2, tint: Color) -> void:
+	var texture_size := texture.get_size()
+	if texture_size.x <= 0.0 or texture_size.y <= 0.0:
+		return
+	var cover_scale := maxf(area.size.x / texture_size.x, area.size.y / texture_size.y)
+	var source_size := area.size / cover_scale
+	var source_position := (texture_size - source_size) * 0.5
+	draw_texture_rect_region(texture, area, Rect2(source_position, source_size), tint)
 
 
 func _draw_playfield() -> void:
@@ -1758,9 +1867,8 @@ func _draw_playfield() -> void:
 		Vector2(BOARD_LEFT, BOARD_TOP),
 		Vector2(BOARD_RIGHT - BOARD_LEFT, playfield_bottom - BOARD_TOP)
 	)
-	draw_rect(playfield_rect, PLAYFIELD_BG, true)
+	draw_rect(playfield_rect, Color(PLAYFIELD_BG, 0.28), true)
 	_draw_paper_texture(playfield_rect, Color(PAPER_FIBER, 0.07), 72)
-	_draw_selected_background(playfield_rect)
 	var wall_color := Color(CREAM, 0.78)
 	draw_line(Vector2(BOARD_LEFT, BOARD_TOP), Vector2(BOARD_LEFT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
 	draw_line(Vector2(BOARD_RIGHT, BOARD_TOP), Vector2(BOARD_RIGHT, playfield_bottom), Color(PAPER_SHADOW, 0.72), 8.0, true)
@@ -2232,6 +2340,13 @@ func _draw_radio_console(rect: Rect2) -> void:
 	draw_texture_rect_region(RADIO_WAVEBOARD_TEXTURE, scope_outer, RADIO_WAVEBOARD_SOURCE_RECT)
 	var wave_rect := _radio_speed_track_rect()
 	_draw_radio_waveform(wave_rect)
+	# Hide the redundant raster graduations so the five functional speed stops
+	# are the only scale marks visible.
+	var scale_mask := Rect2(
+		Vector2(scope_outer.position.x + 10.0, wave_rect.end.y + 2.0),
+		Vector2(scope_outer.size.x - 20.0, 29.0)
+	)
+	draw_rect(scale_mask, Color("#06191d", 0.94), true)
 	_draw_radio_speed_control(scope_outer, wave_rect)
 	_draw_integrated_recall_knob(Vector2(rect.end.x - 64.0, rect.position.y + 69.0))
 
@@ -2383,7 +2498,6 @@ func _draw_menu_button() -> void:
 
 
 func _draw_menu_overlay() -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(W, H)), Color(BG, 0.965), true)
 	var panel := Rect2(24.0, 24.0, W - 48.0, H - 48.0)
 	draw_rect(panel, Color(PANEL, 0.985), true)
 	draw_rect(panel, Color(CREAM, 0.76), false, 3.0, true)
@@ -2656,9 +2770,9 @@ func _draw_ion_powers() -> void:
 		var center: Vector2 = power["position"]
 		var orientation := String(power["orientation"])
 		var alpha := 0.48 if bool(power["activated"]) else 0.90
-		draw_set_transform(center, PI * 0.5 if orientation == "vertical" else 0.0, Vector2.ONE)
+		draw_set_transform(active_draw_offset + center, PI * 0.5 if orientation == "vertical" else 0.0, Vector2.ONE)
 		_draw_cell_texture(ICON_POWER_ION, Rect2(Vector2(-26.0, -26.0), Vector2(52.0, 52.0)), alpha)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_set_transform(active_draw_offset, 0.0, Vector2.ONE)
 
 
 func _draw_ghost_cores() -> void:
@@ -2820,9 +2934,9 @@ func _draw_ion_beam_effects() -> void:
 
 func _draw_launcher() -> void:
 	var rotation := Vector2.UP.angle_to(aim_direction.normalized())
-	draw_set_transform(launcher, rotation, Vector2.ONE)
+	draw_set_transform(active_draw_offset + launcher, rotation, Vector2.ONE)
 	draw_texture_rect(LAUNCHER_TEXTURE, Rect2(-30.0, -70.0, 60.0, 70.0), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_set_transform(active_draw_offset, 0.0, Vector2.ONE)
 
 
 func _draw_game_over() -> void:
