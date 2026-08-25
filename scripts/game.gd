@@ -17,6 +17,12 @@ const ROUND_VALUE_RECT := Rect2(44.0, 129.0, 86.0, 36.0)
 const SCORE_VALUE_RECT := Rect2(204.0, 126.0, 258.0, 49.0)
 const BALLS_VALUE_RECT := Rect2(641.0, 135.0, 34.0, 34.0)
 
+const FOOTER_HEIGHT := 152.0
+const FOOTER_Y := 1110.0
+const FOOTER_CONTROL_SIZE := 108.0
+const FOOTER_CONTROL_CENTER_Y := 1175.0
+const FOOTER_SIDE_SCOPE_GAP := 116.0
+
 var score: int = 0
 
 
@@ -26,11 +32,11 @@ func _update_responsive_layout() -> void:
 	super._update_responsive_layout()
 	var safe_insets := _safe_vertical_insets(layout_viewport_size)
 	var header_target_y := safe_insets.x
-	var footer_target_y := layout_viewport_size.y - safe_insets.y - 18.0 - 152.0
-	footer_target_y = maxf(1110.0, footer_target_y)
+	var footer_target_y := layout_viewport_size.y - safe_insets.y - 18.0 - FOOTER_HEIGHT
+	footer_target_y = maxf(FOOTER_Y, footer_target_y)
 
 	layout_header_y_offset = header_target_y
-	layout_footer_y_offset = footer_target_y - 1110.0
+	layout_footer_y_offset = footer_target_y - FOOTER_Y
 
 	var available_top := header_target_y + HEADER_HEIGHT
 	var available_bottom := footer_target_y - 14.0
@@ -115,6 +121,111 @@ func _draw_header_value(
 		font_size,
 		color
 	)
+
+
+func _footer_rect() -> Rect2:
+	# The footer is intentionally viewport-wide. Because the game content itself
+	# is centered inside a logical 720px canvas, extend the local footer in both
+	# directions by layout_content_x to reach the physical phone edges.
+	return Rect2(
+		Vector2(-layout_content_x, FOOTER_Y),
+		Vector2(layout_viewport_size.x, FOOTER_HEIGHT)
+	)
+
+
+func _draw_footer() -> void:
+	_draw_radio_console(_footer_rect())
+
+
+func _menu_button_rect() -> Rect2:
+	var footer := _footer_rect()
+	var center := Vector2(footer.position.x + 61.0, FOOTER_CONTROL_CENTER_Y)
+	return Rect2(center - Vector2(58.0, 67.0), Vector2(116.0, 134.0))
+
+
+func _recall_button_rect() -> Rect2:
+	var footer := _footer_rect()
+	var center := Vector2(footer.end.x - 61.0, FOOTER_CONTROL_CENTER_Y)
+	return Rect2(center - Vector2(58.0, 67.0), Vector2(116.0, 134.0))
+
+
+func _radio_scope_outer_rect() -> Rect2:
+	var footer := _footer_rect()
+	# RADIO title/ornaments were removed, so the glass can use almost the full
+	# footer height. Side controls keep a small breathing gap from the housing.
+	return Rect2(
+		Vector2(footer.position.x + FOOTER_SIDE_SCOPE_GAP, FOOTER_Y + 10.0),
+		Vector2(footer.size.x - FOOTER_SIDE_SCOPE_GAP * 2.0, 126.0)
+	)
+
+
+func _radio_speed_track_rect() -> Rect2:
+	var scope := _radio_scope_outer_rect()
+	# The waveform gets a much taller usable window. The scale sits underneath
+	# it inside the same glass so the needle, labels and interaction all share
+	# the exact same horizontal geometry.
+	return Rect2(
+		scope.position + Vector2(24.0, 13.0),
+		Vector2(scope.size.x - 48.0, 64.0)
+	)
+
+
+func _radio_speed_interaction_rect() -> Rect2:
+	return _radio_scope_outer_rect().grow(-4.0)
+
+
+func _draw_radio_console(rect: Rect2) -> void:
+	# Keep the established recycled-space-junk faceplate, but let it touch both
+	# phone edges and dedicate the freed RADIO title area to the oscilloscope.
+	_draw_rounded_panel(Rect2(rect.position + Vector2(0.0, 5.0), rect.size), Color(PAPER_SHADOW, 0.90), Color(PAPER_SHADOW, 0.90), 0.0, 8.0)
+	_draw_rounded_panel(rect, Color(PANEL, 1.0), Color(CREAM, 0.82), 3.0, 8.0)
+	_draw_rounded_panel(rect.grow(-7.0), Color(PANEL, 1.0), Color(AMBER, 0.26), 1.0, 5.0)
+	for screw in [
+		rect.position + Vector2(13.0, 13.0),
+		Vector2(rect.end.x - 13.0, rect.position.y + 13.0),
+		Vector2(rect.position.x + 13.0, rect.end.y - 13.0),
+		rect.end - Vector2(13.0, 13.0)
+	]:
+		_draw_machine_screw(screw, 6.0)
+
+	var menu_center := Vector2(rect.position.x + 61.0, FOOTER_CONTROL_CENTER_Y)
+	var recall_center := Vector2(rect.end.x - 61.0, FOOTER_CONTROL_CENTER_Y)
+	_draw_footer_menu_asset(menu_center)
+
+	var scope_outer := _radio_scope_outer_rect()
+	draw_texture_rect_region(RADIO_WAVEBOARD_TEXTURE, scope_outer, RADIO_WAVEBOARD_SOURCE_RECT)
+	var wave_rect := _radio_speed_track_rect()
+	_draw_radio_waveform(wave_rect)
+
+	# Remove raster graduations from the source artwork and redraw only the five
+	# real speed stops. The mask is derived from the enlarged glass, not fixed px.
+	var scale_mask := Rect2(
+		Vector2(scope_outer.position.x + 8.0, wave_rect.end.y + 2.0),
+		Vector2(scope_outer.size.x - 16.0, scope_outer.end.y - wave_rect.end.y - 7.0)
+	)
+	draw_rect(scale_mask, Color("#06191d", 0.94), true)
+	_draw_radio_speed_control(scope_outer, wave_rect)
+	_draw_footer_recall_asset(recall_center)
+
+
+func _draw_footer_menu_asset(center: Vector2) -> void:
+	var asset_rect := Rect2(
+		center - Vector2(FOOTER_CONTROL_SIZE, FOOTER_CONTROL_SIZE) * 0.5,
+		Vector2(FOOTER_CONTROL_SIZE, FOOTER_CONTROL_SIZE)
+	)
+	draw_texture_rect(MENU_SPEAKER_TEXTURE, asset_rect, false)
+	_draw_centered_label("MENU", Vector2(center.x, center.y + 58.0), 12, Color(CREAM, 0.92))
+
+
+func _draw_footer_recall_asset(center: Vector2) -> void:
+	var enabled := state == TurnState.FIRING
+	var asset_rect := Rect2(
+		center - Vector2(FOOTER_CONTROL_SIZE, FOOTER_CONTROL_SIZE) * 0.5,
+		Vector2(FOOTER_CONTROL_SIZE, FOOTER_CONTROL_SIZE)
+	)
+	var tint := Color.WHITE if enabled else Color(0.72, 0.76, 0.74, 0.58)
+	draw_texture_rect(RECALL_KNOB_TEXTURE, asset_rect, false, tint)
+	_draw_centered_label("RECALL", Vector2(center.x, center.y + 58.0), 12, Color(CREAM, 0.92 if enabled else 0.46))
 
 
 func _format_score(value: int) -> String:
