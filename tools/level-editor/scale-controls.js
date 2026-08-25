@@ -6,7 +6,8 @@
 
   const STORAGE_KEY = "ryko-level-editor-v1";
   let currentLevel = loadLevel();
-  let select = null;
+  let columnsInput = null;
+  let rowsInput = null;
 
   function loadLevel() {
     try {
@@ -28,8 +29,8 @@
     const editorBaseRows = 9;
     const baseGridWidth = editorBaseColumns * editorBaseCell + (editorBaseColumns - 1) * editorBaseGap;
     const baseGridHeight = editorBaseRows * editorBaseCell + (editorBaseRows - 1) * editorBaseGap;
-    const scale = currentLevel.boardScale;
-    const cell = editorBaseCell / scale;
+    const visualScale = board.visualScale;
+    const cell = editorBaseCell * visualScale;
     const columnGap = (baseGridWidth - board.columns * cell) / (board.columns - 1);
     const rowGap = (baseGridHeight - board.rows * cell) / (board.rows - 1);
 
@@ -48,9 +49,10 @@
     const shell = document.querySelector(".board-shell");
     if (shell) shell.style.width = `${baseGridWidth + 28}px`;
 
-    const hpSize = Math.max(5.5, 15 / scale);
-    const outline = Math.max(1, 4 / scale);
-    const triangleInset = Math.max(1, 5 / scale);
+    const zoom = 1 / visualScale;
+    const hpSize = Math.max(5.5, 15 / zoom);
+    const outline = Math.max(1, 4 / zoom);
+    const triangleInset = Math.max(1, 5 / zoom);
     const style = document.createElement("style");
     style.id = "ryko-scale-style";
     style.textContent = `
@@ -58,58 +60,79 @@
       .entity.block.dense, .entity.block.regenerative, .entity.block.phase, .entity.block.black_hole { border-width: ${outline}px; }
       .entity .hp { font-size: ${hpSize}px; }
       .entity.triangle::after { inset: ${triangleInset}px; }
-      ${scale >= 2 ? ".cell-index { display:none; }" : ""}
-      ${scale >= 3 ? ".black-hole-side { transform: scale(.55); transform-origin:center; }" : ""}
+      ${visualScale <= 0.5 ? ".cell-index { display:none; }" : ""}
+      ${visualScale <= (1 / 3) ? ".black-hole-side { transform: scale(.55); transform-origin:center; }" : ""}
     `;
     document.getElementById(style.id)?.remove();
     document.head.appendChild(style);
   }
 
-  function injectScaleControl() {
+  function injectDimensionControls() {
     const modeNote = document.getElementById("modeNote");
-    if (!modeNote || document.getElementById("boardScaleSelect")) return;
+    if (!modeNote || document.getElementById("boardColumnsInput")) return;
 
-    const field = document.createElement("label");
-    field.className = "field";
-    field.innerHTML = `Grid scale
-      <select id="boardScaleSelect" aria-label="Board grid scale">
-        <option value="1">1× — 7 × 9</option>
-        <option value="2">2× — 14 × 18</option>
-        <option value="3">3× — 21 × 27</option>
-        <option value="4">4× — 28 × 36</option>
-      </select>`;
-    modeNote.insertAdjacentElement("afterend", field);
+    const wrapper = document.createElement("div");
+    wrapper.className = "grid-dimension-controls";
+    wrapper.innerHTML = `
+      <label class="field">Grid columns
+        <input id="boardColumnsInput" type="number" inputmode="numeric"
+          min="${M.MIN_BOARD_COLUMNS}" max="${M.MAX_BOARD_COLUMNS}" step="1"
+          aria-label="Board grid columns">
+      </label>
+      <label class="field">Grid rows
+        <input id="boardRowsInput" type="number" inputmode="numeric"
+          min="${M.MIN_BOARD_ROWS}" max="${M.MAX_BOARD_ROWS}" step="1"
+          aria-label="Board grid rows">
+      </label>`;
+    modeNote.insertAdjacentElement("afterend", wrapper);
 
-    select = field.querySelector("select");
-    select.value = String(currentLevel.boardScale);
-    select.addEventListener("change", () => {
-      const nextScale = M.normalizeBoardScale(select.value);
-      if (nextScale === currentLevel.boardScale) return;
+    columnsInput = wrapper.querySelector("#boardColumnsInput");
+    rowsInput = wrapper.querySelector("#boardRowsInput");
+    const board = boardForCurrentLevel();
+    columnsInput.value = String(board.columns);
+    rowsInput.value = String(board.rows);
+
+    const applyDimensions = () => {
+      const nextColumns = Number(columnsInput.value);
+      const nextRows = Number(rowsInput.value);
+      if (!M.isSupportedBoardDimensions(nextColumns, nextRows)) {
+        window.alert(`Grid must be ${M.MIN_BOARD_COLUMNS}-${M.MAX_BOARD_COLUMNS} columns and ${M.MIN_BOARD_ROWS}-${M.MAX_BOARD_ROWS} rows.`);
+        updateLabels();
+        return;
+      }
+
+      const currentBoard = boardForCurrentLevel();
+      if (nextColumns === currentBoard.columns && nextRows === currentBoard.rows) return;
 
       const hasContent = currentLevel.initialBoard.length > 0 || currentLevel.incomingRows.some((row) => row.cells?.length);
-      if (hasContent && !window.confirm("Changing grid scale changes every cell coordinate. Clear authored board content and switch grid scale?")) {
-        select.value = String(currentLevel.boardScale);
+      if (hasContent && !window.confirm("Changing grid dimensions changes every cell coordinate. Clear authored board content and switch grid size?")) {
+        updateLabels();
         return;
       }
 
       const next = M.normalizeLevel({
         ...currentLevel,
-        boardScale: nextScale,
-        board: M.boardForScale(nextScale),
+        boardColumns: nextColumns,
+        boardRows: nextRows,
+        board: M.boardForDimensions(nextColumns, nextRows),
         initialBoard: [],
         incomingRows: []
       });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       window.location.reload();
-    });
+    };
+
+    columnsInput.addEventListener("change", applyDimensions);
+    rowsInput.addEventListener("change", applyDimensions);
   }
 
   function updateLabels() {
     const board = boardForCurrentLevel();
-    if (select) select.value = String(currentLevel.boardScale);
+    if (columnsInput) columnsInput.value = String(board.columns);
+    if (rowsInput) rowsInput.value = String(board.rows);
 
     const eyebrow = document.querySelector(".board-card-header .eyebrow");
-    if (eyebrow) eyebrow.textContent = `${board.columns} columns × ${board.rows} playable rows // ${currentLevel.boardScale}× zoom-out grid`;
+    if (eyebrow) eyebrow.textContent = `${board.columns} columns × ${board.rows} playable rows // ${Math.round(board.visualScale * 100)}% element size`;
 
     const contract = document.querySelectorAll(".contract-list > div");
     for (const row of contract) {
@@ -129,6 +152,7 @@
 
   function refresh(level) {
     currentLevel = M.normalizeLevel(level || loadLevel());
+    M.setActiveBoardDimensions(currentLevel.board.columns, currentLevel.board.rows);
     applyVisualScale();
     updateLabels();
   }
@@ -158,7 +182,7 @@
     return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString();
   }
 
-  injectScaleControl();
+  injectDimensionControls();
   refresh(currentLevel);
   observeEditorState();
 })();
