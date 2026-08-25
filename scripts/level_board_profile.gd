@@ -2,7 +2,8 @@ class_name RykoLevelBoardProfile
 extends RefCounted
 
 # Authored levels can subdivide the exact same RYKO playfield without changing
-# the existing endless-mode constants in main.gd. Scale 1 is the current game.
+# the existing endless/hero gameplay constants in main.gd. 7x9 is the current
+# standard board, but authored levels may choose any supported column/row count.
 const BASE_COLUMNS := 7
 const BASE_ROWS := 9
 const BASE_CELL := 88.0
@@ -25,6 +26,10 @@ const BASE_GRID_WIDTH := BASE_COLUMNS * BASE_CELL + (BASE_COLUMNS - 1) * BASE_GA
 const BASE_GRID_HEIGHT := BASE_ROWS * BASE_CELL + (BASE_ROWS - 1) * BASE_GAP
 const MIN_SCALE := 1
 const MAX_SCALE := 4
+const MIN_COLUMNS := 6
+const MAX_COLUMNS := 28
+const MIN_ROWS := 8
+const MAX_ROWS := 36
 
 
 static func is_supported_scale(value: Variant) -> bool:
@@ -36,23 +41,48 @@ static func normalize_scale(value: Variant) -> int:
 	return clampi(int(value), MIN_SCALE, MAX_SCALE)
 
 
-static func from_scale(value: Variant) -> Dictionary:
-	var scale := normalize_scale(value)
-	var visual_scale := 1.0 / float(scale)
-	var columns := BASE_COLUMNS * scale
-	var rows := BASE_ROWS * scale
-	var cell := BASE_CELL * visual_scale
+static func is_supported_dimensions(columns_value: Variant, rows_value: Variant) -> bool:
+	var columns := int(columns_value)
+	var rows := int(rows_value)
+	return columns >= MIN_COLUMNS and columns <= MAX_COLUMNS \
+		and rows >= MIN_ROWS and rows <= MAX_ROWS
 
-	# The playfield itself must not grow when it contains more logical cells.
-	# Dense grids have more separators, so the gaps are derived from the fixed
-	# original 7x9 footprint instead of simply scaling BASE_GAP.
+
+static func normalize_columns(value: Variant) -> int:
+	return clampi(int(value), MIN_COLUMNS, MAX_COLUMNS)
+
+
+static func normalize_rows(value: Variant) -> int:
+	return clampi(int(value), MIN_ROWS, MAX_ROWS)
+
+
+static func legacy_scale_for_dimensions(columns: int, rows: int) -> int:
+	if columns % BASE_COLUMNS != 0 or rows % BASE_ROWS != 0:
+		return 0
+	var column_scale := int(columns / BASE_COLUMNS)
+	var row_scale := int(rows / BASE_ROWS)
+	if column_scale == row_scale and is_supported_scale(column_scale):
+		return column_scale
+	return 0
+
+
+static func from_dimensions(columns_value: Variant, rows_value: Variant) -> Dictionary:
+	var columns := normalize_columns(columns_value)
+	var rows := normalize_rows(rows_value)
+	# Keep cells square. Whichever axis is denser drives the zoom-out amount;
+	# the remaining space is distributed as gaps so the physical playfield stays
+	# exactly the same size as the current 7x9 board.
+	var visual_scale := minf(float(BASE_COLUMNS) / float(columns), float(BASE_ROWS) / float(rows))
+	var cell := BASE_CELL * visual_scale
 	var column_gap := (BASE_GRID_WIDTH - float(columns) * cell) / float(columns - 1)
 	var row_gap := (BASE_GRID_HEIGHT - float(rows) * cell) / float(rows - 1)
 	var column_step := cell + column_gap
 	var row_step := cell + row_gap
+	var legacy_scale := legacy_scale_for_dimensions(columns, rows)
 
 	return {
-		"scale": scale,
+		"scale": legacy_scale,
+		"legacy_scale": legacy_scale,
 		"columns": columns,
 		"rows": rows,
 		"cell": cell,
@@ -82,27 +112,49 @@ static func from_scale(value: Variant) -> Dictionary:
 	}
 
 
+static func from_scale(value: Variant) -> Dictionary:
+	var scale := normalize_scale(value)
+	return from_dimensions(BASE_COLUMNS * scale, BASE_ROWS * scale)
+
+
 static func infer_scale(level_data: Dictionary) -> int:
-	if level_data.has("boardScale"):
-		return normalize_scale(level_data.get("boardScale", 1))
+	var dimensions := resolve_dimensions(level_data)
+	var legacy_scale := legacy_scale_for_dimensions(int(dimensions["columns"]), int(dimensions["rows"]))
+	return legacy_scale if legacy_scale > 0 else 1
+
+
+static func resolve_dimensions(level_data: Dictionary) -> Dictionary:
 	var board_variant: Variant = level_data.get("board", {})
-	if typeof(board_variant) != TYPE_DICTIONARY:
-		return 1
-	var board: Dictionary = board_variant
-	if board.has("scale"):
-		return normalize_scale(board.get("scale", 1))
-	var columns := int(board.get("columns", BASE_COLUMNS))
-	var rows := int(board.get("rows", BASE_ROWS))
-	if columns % BASE_COLUMNS == 0 and rows % BASE_ROWS == 0:
-		var column_scale := int(columns / BASE_COLUMNS)
-		var row_scale := int(rows / BASE_ROWS)
-		if column_scale == row_scale:
-			return normalize_scale(column_scale)
-	return 1
+	if typeof(board_variant) == TYPE_DICTIONARY:
+		var board: Dictionary = board_variant
+		if board.has("columns") or board.has("rows"):
+			return {
+				"columns": normalize_columns(board.get("columns", BASE_COLUMNS)),
+				"rows": normalize_rows(board.get("rows", BASE_ROWS)),
+			}
+
+	if level_data.has("boardColumns") or level_data.has("boardRows"):
+		return {
+			"columns": normalize_columns(level_data.get("boardColumns", BASE_COLUMNS)),
+			"rows": normalize_rows(level_data.get("boardRows", BASE_ROWS)),
+		}
+
+	if level_data.has("boardScale"):
+		var scale := normalize_scale(level_data.get("boardScale", 1))
+		return {"columns": BASE_COLUMNS * scale, "rows": BASE_ROWS * scale}
+
+	if typeof(board_variant) == TYPE_DICTIONARY:
+		var board: Dictionary = board_variant
+		if board.has("scale"):
+			var nested_scale := normalize_scale(board.get("scale", 1))
+			return {"columns": BASE_COLUMNS * nested_scale, "rows": BASE_ROWS * nested_scale}
+
+	return {"columns": BASE_COLUMNS, "rows": BASE_ROWS}
 
 
 static func from_level_data(level_data: Dictionary) -> Dictionary:
-	return from_scale(infer_scale(level_data))
+	var dimensions := resolve_dimensions(level_data)
+	return from_dimensions(dimensions["columns"], dimensions["rows"])
 
 
 static func matches_level_board(level_data: Dictionary) -> bool:
