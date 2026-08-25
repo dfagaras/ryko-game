@@ -26,9 +26,6 @@ jobs:
       - name: Check out develop
         uses: actions/checkout@v6
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
       - name: Validate editor JavaScript and JSON model
         shell: bash
         run: |
@@ -36,6 +33,9 @@ jobs:
           node --check tools/level-editor/model.js
           node --check tools/level-editor/editor.js
           node tools/level-editor/validate-editor.mjs
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
       - name: Build Pages artifact
         shell: bash
