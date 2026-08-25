@@ -85,9 +85,22 @@
     select.addEventListener("change", () => {
       const nextScale = M.normalizeBoardScale(select.value);
       if (nextScale === currentLevel.boardScale) return;
-      window.dispatchEvent(new CustomEvent("ryko-board-scale-requested", {
-        detail: { scale: nextScale }
-      }));
+
+      const hasContent = currentLevel.initialBoard.length > 0 || currentLevel.incomingRows.some((row) => row.cells?.length);
+      if (hasContent && !window.confirm("Changing grid scale changes every cell coordinate. Clear authored board content and switch grid scale?")) {
+        select.value = String(currentLevel.boardScale);
+        return;
+      }
+
+      const next = M.normalizeLevel({
+        ...currentLevel,
+        boardScale: nextScale,
+        board: M.boardForScale(nextScale),
+        initialBoard: [],
+        incomingRows: []
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      window.location.reload();
     });
   }
 
@@ -120,14 +133,32 @@
     updateLabels();
   }
 
+  function refreshFromJsonPreview() {
+    const preview = document.getElementById("jsonPreview");
+    if (!preview?.textContent?.trim()) return;
+    try {
+      refresh(JSON.parse(preview.textContent));
+    } catch {
+      // The editor may be between render passes; its next JSON update retries.
+    }
+  }
+
+  function observeEditorState() {
+    const preview = document.getElementById("jsonPreview");
+    if (!preview) return;
+    new MutationObserver(refreshFromJsonPreview).observe(preview, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+    refreshFromJsonPreview();
+  }
+
   function format(value) {
     return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString();
   }
 
-  window.addEventListener("ryko-level-changed", (event) => {
-    refresh(event.detail?.level);
-  });
-
   injectScaleControl();
   refresh(currentLevel);
+  observeEditorState();
 })();
