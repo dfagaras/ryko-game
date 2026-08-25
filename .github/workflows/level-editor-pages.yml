@@ -24,7 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out develop
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
       - name: Validate editor JavaScript and JSON model
         shell: bash
@@ -55,7 +58,7 @@ jobs:
           cp assets/icons/power_supernova.png "$site/assets/icons/"
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ${{ runner.temp }}/ryko-level-editor-site
 
