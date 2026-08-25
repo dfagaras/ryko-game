@@ -5,34 +5,48 @@
   if (!M) return;
 
   const STORAGE_KEY = "ryko-level-editor-v1";
-  let draft;
-  try {
-    draft = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || M.createDefaultLevel();
-  } catch {
-    draft = M.createDefaultLevel();
+  let currentLevel = loadLevel();
+  let select = null;
+
+  function loadLevel() {
+    try {
+      return M.normalizeLevel(JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || M.createDefaultLevel());
+    } catch {
+      return M.createDefaultLevel();
+    }
   }
-  draft = M.normalizeLevel(draft);
-  const board = M.boardForLevel(draft);
+
+  function boardForCurrentLevel() {
+    return M.boardForLevel(currentLevel);
+  }
 
   function applyVisualScale() {
+    const board = boardForCurrentLevel();
     const editorBaseCell = 58;
     const editorBaseGap = 3;
-    const scale = draft.boardScale;
+    const editorBaseColumns = 7;
+    const editorBaseRows = 9;
+    const baseGridWidth = editorBaseColumns * editorBaseCell + (editorBaseColumns - 1) * editorBaseGap;
+    const baseGridHeight = editorBaseRows * editorBaseCell + (editorBaseRows - 1) * editorBaseGap;
+    const scale = currentLevel.boardScale;
     const cell = editorBaseCell / scale;
-    const gap = editorBaseGap / scale;
-    const gridWidth = board.columns * cell + Math.max(0, board.columns - 1) * gap;
+    const columnGap = (baseGridWidth - board.columns * cell) / (board.columns - 1);
+    const rowGap = (baseGridHeight - board.rows * cell) / (board.rows - 1);
 
     document.documentElement.style.setProperty("--cell", `${cell}px`);
-    document.documentElement.style.setProperty("--gap", `${gap}px`);
+    document.documentElement.style.setProperty("--gap", `${columnGap}px`);
 
     const template = `repeat(${board.columns}, var(--cell))`;
     document.querySelectorAll(".board-grid, .incoming-strip, .incoming-editor").forEach((grid) => {
       grid.style.gridTemplateColumns = template;
       grid.style.gridAutoRows = "var(--cell)";
+      grid.style.columnGap = `${columnGap}px`;
+      grid.style.rowGap = `${rowGap}px`;
+      grid.style.width = `${baseGridWidth}px`;
     });
 
     const shell = document.querySelector(".board-shell");
-    if (shell) shell.style.width = `${gridWidth + 28}px`;
+    if (shell) shell.style.width = `${baseGridWidth + 28}px`;
 
     const hpSize = Math.max(5.5, 15 / scale);
     const outline = Math.max(1, 4 / scale);
@@ -53,7 +67,7 @@
 
   function injectScaleControl() {
     const modeNote = document.getElementById("modeNote");
-    if (!modeNote) return;
+    if (!modeNote || document.getElementById("boardScaleSelect")) return;
 
     const field = document.createElement("label");
     field.className = "field";
@@ -66,28 +80,23 @@
       </select>`;
     modeNote.insertAdjacentElement("afterend", field);
 
-    const select = field.querySelector("select");
-    select.value = String(draft.boardScale);
+    select = field.querySelector("select");
+    select.value = String(currentLevel.boardScale);
     select.addEventListener("change", () => {
       const nextScale = M.normalizeBoardScale(select.value);
-      if (nextScale === draft.boardScale) return;
-      const hasContent = draft.initialBoard.length > 0 || draft.incomingRows.some((row) => row.cells?.length);
-      if (hasContent && !window.confirm("Changing grid scale changes every cell coordinate. Clear authored board content and switch grid scale?")) {
-        select.value = String(draft.boardScale);
-        return;
-      }
-      draft.boardScale = nextScale;
-      draft.board = M.boardForScale(nextScale);
-      draft.initialBoard = [];
-      draft.incomingRows = [];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-      window.location.reload();
+      if (nextScale === currentLevel.boardScale) return;
+      window.dispatchEvent(new CustomEvent("ryko-board-scale-requested", {
+        detail: { scale: nextScale }
+      }));
     });
   }
 
   function updateLabels() {
+    const board = boardForCurrentLevel();
+    if (select) select.value = String(currentLevel.boardScale);
+
     const eyebrow = document.querySelector(".board-card-header .eyebrow");
-    if (eyebrow) eyebrow.textContent = `${board.columns} columns × ${board.rows} playable rows // ${draft.boardScale}× zoom-out grid`;
+    if (eyebrow) eyebrow.textContent = `${board.columns} columns × ${board.rows} playable rows // ${currentLevel.boardScale}× zoom-out grid`;
 
     const contract = document.querySelectorAll(".contract-list > div");
     for (const row of contract) {
@@ -98,10 +107,27 @@
       if (label === "Playable rows") value.textContent = String(board.rows);
     }
     const cellContract = [...contract].find((row) => row.querySelector("dt")?.textContent === "Cells")?.querySelector("dd");
-    if (cellContract) cellContract.textContent = `${board.cell.toFixed(board.cell % 1 ? 1 : 0)} px + ${board.gap.toFixed(board.gap % 1 ? 1 : 0)} px gap`;
+    if (cellContract) {
+      const xGap = Number(board.columnGap ?? board.gap);
+      const yGap = Number(board.rowGap ?? board.gap);
+      cellContract.textContent = `${format(board.cell)} px cell · ${format(xGap)} / ${format(yGap)} px gaps`;
+    }
   }
 
+  function refresh(level) {
+    currentLevel = M.normalizeLevel(level || loadLevel());
+    applyVisualScale();
+    updateLabels();
+  }
+
+  function format(value) {
+    return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString();
+  }
+
+  window.addEventListener("ryko-level-changed", (event) => {
+    refresh(event.detail?.level);
+  });
+
   injectScaleControl();
-  applyVisualScale();
-  updateLabels();
+  refresh(currentLevel);
 })();
