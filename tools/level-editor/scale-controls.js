@@ -8,6 +8,8 @@
   let currentLevel = loadLevel();
   let columnsInput = null;
   let rowsInput = null;
+  let ballSizeSelect = null;
+  let ballSizeReadout = null;
 
   function loadLevel() {
     try {
@@ -65,6 +67,7 @@
     `;
     document.getElementById(style.id)?.remove();
     document.head.appendChild(style);
+    updateBallPreview();
   }
 
   function injectDimensionControls() {
@@ -126,10 +129,102 @@
     rowsInput.addEventListener("change", applyDimensions);
   }
 
+  function injectBallControls() {
+    const dimensions = document.querySelector(".grid-dimension-controls");
+    if (!dimensions || document.getElementById("ballSizeSelect")) return;
+
+    const field = document.createElement("label");
+    field.className = "field ball-size-field";
+    field.innerHTML = `Ball size
+      <select id="ballSizeSelect" aria-label="Level ball size">
+        <option value="0.70">0.70× — very small</option>
+        <option value="0.85">0.85× — small</option>
+        <option value="1.00">1.00× — standard</option>
+        <option value="1.15">1.15× — large</option>
+        <option value="1.30">1.30× — very large</option>
+      </select>
+      <span id="ballSizeReadout" class="ball-size-readout"></span>`;
+    dimensions.insertAdjacentElement("afterend", field);
+
+    ballSizeSelect = field.querySelector("#ballSizeSelect");
+    ballSizeReadout = field.querySelector("#ballSizeReadout");
+    ballSizeSelect.value = Number(currentLevel.ball?.sizeMultiplier || 1).toFixed(2);
+    ballSizeSelect.addEventListener("change", () => {
+      const multiplier = M.normalizeBallSizeMultiplier(ballSizeSelect.value);
+      currentLevel = M.normalizeLevel({
+        ...currentLevel,
+        ball: { sizeMultiplier: multiplier }
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentLevel));
+      updateLabels();
+      updateBallPreview();
+      window.location.reload();
+    });
+
+    const shell = document.querySelector(".board-shell");
+    if (shell && !document.getElementById("ballSizePreview")) {
+      const preview = document.createElement("div");
+      preview.id = "ballSizePreview";
+      preview.className = "ball-size-preview";
+      preview.innerHTML = `
+        <div class="ball-preview-title">BALL SIZE</div>
+        <div class="ball-preview-row"><span class="ball-preview-dot standard"></span><span>standard</span></div>
+        <div class="ball-preview-row"><span class="ball-preview-dot selected"></span><span>selected</span></div>`;
+      shell.appendChild(preview);
+    }
+
+    injectBallStyles();
+  }
+
+  function injectBallStyles() {
+    if (document.getElementById("ryko-ball-size-style")) return;
+    const style = document.createElement("style");
+    style.id = "ryko-ball-size-style";
+    style.textContent = `
+      .ball-size-field { margin-top: 10px; }
+      .ball-size-readout { display:block; margin-top:6px; color:var(--muted, #8aa1a8); font-size:11px; line-height:1.4; }
+      .board-shell { position:relative; }
+      .ball-size-preview { position:absolute; right:9px; top:9px; z-index:8; min-width:88px; padding:7px 8px; border:1px solid rgba(137,229,255,.34); border-radius:8px; background:rgba(3,15,20,.82); color:#d9f7ff; font-size:9px; line-height:1; pointer-events:none; box-shadow:0 3px 12px rgba(0,0,0,.25); }
+      .ball-preview-title { margin-bottom:6px; font-size:8px; letter-spacing:.13em; opacity:.72; }
+      .ball-preview-row { min-height:18px; display:flex; align-items:center; gap:7px; white-space:nowrap; }
+      .ball-preview-dot { display:inline-block; flex:none; border-radius:50%; box-sizing:border-box; }
+      .ball-preview-dot.standard { border:1px dashed rgba(217,247,255,.92); background:transparent; }
+      .ball-preview-dot.selected { border:1px solid rgba(255,255,255,.96); background:rgba(86,226,255,.9); box-shadow:0 0 6px rgba(86,226,255,.45); }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function updateBallPreview() {
+    const metrics = M.ballMetricsForLevel(currentLevel);
+    if (ballSizeSelect) ballSizeSelect.value = metrics.sizeMultiplier.toFixed(2);
+    if (ballSizeReadout) {
+      ballSizeReadout.textContent = `Standard radius ${format(metrics.standardRadius)} px · selected ${format(metrics.selectedRadius)} px`;
+    }
+
+    const preview = document.getElementById("ballSizePreview");
+    if (!preview) return;
+    const editorScale = 58 / 88;
+    const standardDiameter = Math.max(3, metrics.standardRadius * 2 * editorScale);
+    const selectedDiameter = Math.max(3, metrics.selectedRadius * 2 * editorScale);
+    const standard = preview.querySelector(".ball-preview-dot.standard");
+    const selected = preview.querySelector(".ball-preview-dot.selected");
+    if (standard) {
+      standard.style.width = `${standardDiameter}px`;
+      standard.style.height = `${standardDiameter}px`;
+    }
+    if (selected) {
+      selected.style.width = `${selectedDiameter}px`;
+      selected.style.height = `${selectedDiameter}px`;
+    }
+    preview.title = `Standard ${format(metrics.standardRadius)} px radius; selected ${format(metrics.selectedRadius)} px (${metrics.sizeMultiplier.toFixed(2)}×)`;
+  }
+
   function updateLabels() {
     const board = boardForCurrentLevel();
+    const metrics = M.ballMetricsForLevel(currentLevel);
     if (columnsInput) columnsInput.value = String(board.columns);
     if (rowsInput) rowsInput.value = String(board.rows);
+    if (ballSizeSelect) ballSizeSelect.value = metrics.sizeMultiplier.toFixed(2);
 
     const eyebrow = document.querySelector(".board-card-header .eyebrow");
     if (eyebrow) eyebrow.textContent = `${board.columns} columns × ${board.rows} playable rows // ${Math.round(board.visualScale * 100)}% element size`;
@@ -141,12 +236,25 @@
       if (!value) continue;
       if (label === "Columns") value.textContent = String(board.columns);
       if (label === "Playable rows") value.textContent = String(board.rows);
+      if (label === "Ball") value.textContent = `${metrics.sizeMultiplier.toFixed(2)}× · ${format(metrics.selectedRadius)} px radius`;
     }
     const cellContract = [...contract].find((row) => row.querySelector("dt")?.textContent === "Cells")?.querySelector("dd");
     if (cellContract) {
       const xGap = Number(board.columnGap ?? board.gap);
       const yGap = Number(board.rowGap ?? board.gap);
       cellContract.textContent = `${format(board.cell)} px cell · ${format(xGap)} / ${format(yGap)} px gaps`;
+    }
+
+    const contractList = document.querySelector(".contract-list");
+    if (contractList && ![...contractList.querySelectorAll("dt")].some((dt) => dt.textContent === "Ball")) {
+      const row = document.createElement("div");
+      row.innerHTML = `<dt>Ball</dt><dd>${metrics.sizeMultiplier.toFixed(2)}× · ${format(metrics.selectedRadius)} px radius</dd>`;
+      const loseRow = document.getElementById("loseContract");
+      contractList.insertBefore(row, loseRow || null);
+    }
+
+    if (ballSizeReadout) {
+      ballSizeReadout.textContent = `Standard radius ${format(metrics.standardRadius)} px · selected ${format(metrics.selectedRadius)} px`;
     }
   }
 
@@ -155,6 +263,7 @@
     M.setActiveBoardDimensions(currentLevel.board.columns, currentLevel.board.rows);
     applyVisualScale();
     updateLabels();
+    updateBallPreview();
   }
 
   function refreshFromJsonPreview() {
@@ -183,6 +292,7 @@
   }
 
   injectDimensionControls();
+  injectBallControls();
   refresh(currentLevel);
   observeEditorState();
 })();
