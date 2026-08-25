@@ -36,6 +36,18 @@
         <label class="field">Starting balls<input id="startingBalls" type="number" min="1" value="1" /></label>
         <label class="field" id="moveLimitField">Move limit<input id="moveLimit" type="number" min="1" value="10" /></label>
       </div>
+
+      <div class="field grid-scale-field">
+        <span>Grid scale / zoom-out</span>
+        <div id="gridScalePicker" class="scale-picker" role="group" aria-label="Board grid scale">
+          <button type="button" data-scale="1">1×<small>7×9</small></button>
+          <button type="button" data-scale="2">2×<small>14×18</small></button>
+          <button type="button" data-scale="3">3×<small>21×27</small></button>
+          <button type="button" data-scale="4">4×<small>28×36</small></button>
+        </div>
+        <div class="scale-note" id="gridScaleNote">Same physical board; pieces and ball scale down proportionally.</div>
+      </div>
+
       <div class="mode-note" id="modeNote"></div>
 
       <div class="section-rule"></div>
@@ -66,7 +78,7 @@
       <div class="board-card">
         <div class="board-card-header">
           <div>
-            <div class="eyebrow">7 columns × 9 playable rows</div>
+            <div class="eyebrow" id="boardDimensions">7 columns × 9 playable rows // 1×</div>
             <h2 id="boardTitle">Initial board</h2>
           </div>
           <div class="board-actions">
@@ -76,7 +88,7 @@
           </div>
         </div>
 
-        <div class="board-shell">
+        <div class="board-shell" id="boardShell">
           <div class="incoming-slot-label" id="incomingSlotLabel" hidden>INCOMING ROW</div>
           <div class="incoming-strip" id="incomingStrip" hidden></div>
           <div class="board-grid" id="boardGrid" aria-label="RYKO board editor"></div>
@@ -112,9 +124,11 @@
       <div class="panel-title">Level contract</div>
       <dl class="contract-list">
         <div><dt>Board</dt><dd>720×1280 logical canvas</dd></div>
-        <div><dt>Cells</dt><dd>88 px + 4 px gap</dd></div>
-        <div><dt>Columns</dt><dd>7</dd></div>
-        <div><dt>Playable rows</dt><dd>9</dd></div>
+        <div><dt>Grid scale</dt><dd id="contractScale">1× zoom-out</dd></div>
+        <div><dt>Grid</dt><dd id="contractGrid">7 × 9</dd></div>
+        <div><dt>Cell</dt><dd id="contractCell">88 px</dd></div>
+        <div><dt>Ball</dt><dd id="contractBall">9 px radius</dd></div>
+        <div><dt>Ball speed</dt><dd id="contractBallSpeed">760 px/s base</dd></div>
         <div><dt>Win</dt><dd>Clear all authored content</dd></div>
         <div id="loseContract"><dt>Lose</dt><dd>Exceed move limit</dd></div>
       </dl>
