@@ -1,0 +1,71 @@
+name: RYKO Level Editor Pages
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - "tools/level-editor/**"
+      - "assets/icons/**"
+      - ".github/workflows/level-editor-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "ryko-level-editor-pages"
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out develop
+        uses: actions/checkout@v5
+
+      - name: Validate editor JavaScript and JSON model
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/level-editor/model.js
+          node --check tools/level-editor/editor.js
+          node tools/level-editor/validate-editor.mjs
+
+      - name: Build Pages artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="$RUNNER_TEMP/ryko-level-editor-site"
+          mkdir -p "$site/assets/icons"
+          cp tools/level-editor/index.html "$site/index.html"
+          cp tools/level-editor/styles.css "$site/styles.css"
+          cp tools/level-editor/model.js "$site/model.js"
+          cp tools/level-editor/editor.js "$site/editor.js"
+          touch "$site/.nojekyll"
+          cp assets/icons/block_black_hole.png "$site/assets/icons/"
+          cp assets/icons/block_dense.png "$site/assets/icons/"
+          cp assets/icons/block_phase.png "$site/assets/icons/"
+          cp assets/icons/block_regenerative.png "$site/assets/icons/"
+          cp assets/icons/power_ghost.png "$site/assets/icons/"
+          cp assets/icons/power_ion.png "$site/assets/icons/"
+          cp assets/icons/power_plus_one.png "$site/assets/icons/"
+          cp assets/icons/power_supernova.png "$site/assets/icons/"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/ryko-level-editor-site
+
+  deploy:
+    needs: validate-and-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
