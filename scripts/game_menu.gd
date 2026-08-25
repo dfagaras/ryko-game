@@ -1,4 +1,4 @@
-extends "res://scripts/game.gd"
+extends "res://scripts/header_style.gd"
 
 const MENU_PANEL_TEXTURE: Texture2D = preload("res://assets/ui/menu/menu_panel_frame.png")
 const MENU_RESUME_TEXTURE: Texture2D = preload("res://assets/ui/menu/btn_resume.png")
@@ -45,8 +45,8 @@ func _settings_back_rect() -> Rect2:
 
 
 func _draw() -> void:
-	# Same rendering pipeline as the established game, except the pause menu now
-	# behaves like a real overlay: the current board remains visible underneath.
+	# Keep the established game rendering, but turn the pause UI into a genuine
+	# overlay so the current board remains visible underneath the popup.
 	_update_responsive_layout()
 	_set_draw_offset(Vector2.ZERO)
 	var full_area := Rect2(Vector2.ZERO, layout_viewport_size)
@@ -97,15 +97,12 @@ func _draw_menu_overlay() -> void:
 		_draw_settings_popup()
 		return
 
-	# Existing detailed pages remain functional while we progressively restyle
-	# them into the same physical popup language.
+	# Existing detailed pages remain functional while they are progressively
+	# migrated to the same physical popup language.
 	super._draw_menu_overlay()
 
 
 func _draw_pause_popup() -> void:
-	# The frame already contains the RYKO / MISSION CONTROL identity and physical
-	# console details. Buttons stay as separate textures so their hit areas and
-	# future pressed/disabled states are independent of the frame artwork.
 	draw_texture_rect(MENU_PANEL_TEXTURE, POPUP_PANEL_RECT, false)
 	draw_texture_rect(MENU_RESUME_TEXTURE, _popup_resume_rect(), false)
 	draw_texture_rect(MENU_RESTART_TEXTURE, _popup_restart_rect(), false)
@@ -114,9 +111,7 @@ func _draw_pause_popup() -> void:
 
 
 func _draw_settings_popup() -> void:
-	# Settings is intentionally simple for this pass. Background and ball sound
-	# keep their existing selectors; the first-page visual asset work stays scoped
-	# to the pause popup as agreed.
+	# First pass keeps the existing selectors behind a compact Settings hub.
 	_draw_rounded_panel(SETTINGS_POPUP_RECT, Color(PANEL, 0.99), Color(CREAM, 0.82), 3.0, 18.0)
 	_draw_rounded_panel(SETTINGS_POPUP_RECT.grow(-8.0), Color(PANEL, 0.99), Color(AMBER, 0.26), 1.0, 14.0)
 	_draw_centered_label("SETTINGS", Vector2(W * 0.5, 415.0), 27, CREAM)
