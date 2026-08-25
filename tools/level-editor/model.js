@@ -21,9 +21,16 @@
     rowStep: 92
   });
 
+  const BASE_GRID_WIDTH = BASE_BOARD.columns * BASE_BOARD.cell + (BASE_BOARD.columns - 1) * BASE_BOARD.gap;
+  const BASE_GRID_HEIGHT = BASE_BOARD.rows * BASE_BOARD.cell + (BASE_BOARD.rows - 1) * BASE_BOARD.gap;
   const MIN_BOARD_SCALE = 1;
   const MAX_BOARD_SCALE = 4;
   let activeBoardScale = 1;
+
+  function isSupportedBoardScale(value) {
+    const scale = Math.trunc(Number(value));
+    return Number.isFinite(scale) && scale >= MIN_BOARD_SCALE && scale <= MAX_BOARD_SCALE;
+  }
 
   function normalizeBoardScale(value) {
     const scale = Math.trunc(Number(value) || 1);
@@ -45,17 +52,34 @@
 
   function boardForScale(value) {
     const scale = normalizeBoardScale(value);
+    const columns = BASE_BOARD.columns * scale;
+    const rows = BASE_BOARD.rows * scale;
     const cell = BASE_BOARD.cell / scale;
-    const gap = BASE_BOARD.gap / scale;
-    const rowStep = BASE_BOARD.rowStep / scale;
+
+    // The physical board must remain exactly the same size. Scaling the old
+    // 4px gap directly would slightly expand dense grids because they contain
+    // more separators. Recalculate the gaps from the fixed 7x9 footprint.
+    const columnGap = columns > 1 ? (BASE_GRID_WIDTH - columns * cell) / (columns - 1) : 0;
+    const rowGap = rows > 1 ? (BASE_GRID_HEIGHT - rows * cell) / (rows - 1) : 0;
+    const columnStep = cell + columnGap;
+    const rowStep = cell + rowGap;
+
     return {
       ...BASE_BOARD,
       scale,
-      columns: BASE_BOARD.columns * scale,
-      rows: BASE_BOARD.rows * scale,
+      columns,
+      rows,
       cell,
-      gap,
+      // gap remains for schema-v1 compatibility. New code should use the
+      // explicit horizontal/vertical values below.
+      gap: columnGap,
+      columnGap,
+      rowGap,
+      columnStep,
       rowStep,
+      gridWidth: BASE_GRID_WIDTH,
+      gridHeight: BASE_GRID_HEIGHT,
+      dangerRow: rows - 1,
       visualScale: 1 / scale,
       ballRadius: 9 / scale,
       ballCollisionRadius: 10 / scale,
@@ -156,12 +180,10 @@
   function normalizeLevel(input) {
     const source = input && typeof input === "object" ? input : {};
     const scale = inferBoardScale(source);
-    activeBoardScale = scale;
     const board = boardForScale(scale);
     const base = createDefaultLevel();
-    activeBoardScale = scale;
     const level = createDefaultLevel();
-    activeBoardScale = scale;
+
     level.levelId = String(source.levelId || base.levelId).trim() || base.levelId;
     level.name = String(source.name || base.name).trim() || base.name;
     level.boardScale = scale;
@@ -206,11 +228,16 @@
   }
 
   function validateLevel(input) {
-    const level = normalizeLevel(input);
+    const raw = input && typeof input === "object" ? input : {};
+    const explicitScale = raw.boardScale ?? raw.board?.scale;
+    const level = normalizeLevel(raw);
     const board = boardForLevel(level);
     const errors = [];
     const warnings = [];
 
+    if (explicitScale !== undefined && explicitScale !== null && !isSupportedBoardScale(explicitScale)) {
+      errors.push("Board scale must be 1, 2, 3 or 4.");
+    }
     if (!String(level.levelId).trim()) errors.push("Level ID is required.");
     if (!String(level.name).trim()) errors.push("Level name is required.");
     if (level.rules.startingBalls < 1) errors.push("Starting balls must be at least 1.");
@@ -232,7 +259,7 @@
     if (initialBlocks === 0) errors.push("The initial board needs at least one block so the level cannot complete before play begins.");
 
     if (level.rules.mode === MODES.DESCENT) {
-      const dangerBlocks = level.initialBoard.filter((entity) => entity.kind === "block" && entity.row >= board.rows - 2);
+      const dangerBlocks = level.initialBoard.filter((entity) => entity.kind === "block" && entity.row >= board.dangerRow - 1);
       if (dangerBlocks.length) warnings.push(`${dangerBlocks.length} block(s) start on or one row above the danger line; they must be destroyed before the next descent.`);
       if (level.incomingRows.length === 0) warnings.push("No authored incoming rows: the initial board will only move downward each turn.");
     } else if (level.incomingRows.some((row) => row.cells.length)) {
@@ -259,7 +286,7 @@
       const shifted = [];
       for (const entity of entities) {
         const next = { ...entity, row: entity.row + 1 };
-        if (next.kind === "block" && next.row >= board.rows - 1) {
+        if (next.kind === "block" && next.row >= board.dangerRow) {
           danger = true;
           if (dangerAtMove === null) dangerAtMove = move;
         }
@@ -290,11 +317,14 @@
 
   return {
     BASE_BOARD,
+    BASE_GRID_WIDTH,
+    BASE_GRID_HEIGHT,
     BOARD,
     SCHEMA_VERSION,
     MODES,
     MIN_BOARD_SCALE,
     MAX_BOARD_SCALE,
+    isSupportedBoardScale,
     boardForScale,
     boardForLevel,
     normalizeBoardScale,
