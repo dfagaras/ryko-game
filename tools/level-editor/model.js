@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const BOARD = Object.freeze({
+  const BASE_BOARD = Object.freeze({
     logicalWidth: 720,
     logicalHeight: 1280,
     boardLeft: 28,
@@ -21,9 +21,60 @@
     rowStep: 92
   });
 
+  const MIN_BOARD_SCALE = 1;
+  const MAX_BOARD_SCALE = 4;
+  let activeBoardScale = 1;
+
+  function normalizeBoardScale(value) {
+    const scale = Math.trunc(Number(value) || 1);
+    return Math.min(MAX_BOARD_SCALE, Math.max(MIN_BOARD_SCALE, scale));
+  }
+
+  function inferBoardScale(source) {
+    const explicit = source?.boardScale ?? source?.board?.scale;
+    if (explicit !== undefined && explicit !== null) return normalizeBoardScale(explicit);
+    const columns = Number(source?.board?.columns);
+    const rows = Number(source?.board?.rows);
+    if (Number.isInteger(columns) && Number.isInteger(rows) && columns % BASE_BOARD.columns === 0 && rows % BASE_BOARD.rows === 0) {
+      const columnScale = columns / BASE_BOARD.columns;
+      const rowScale = rows / BASE_BOARD.rows;
+      if (columnScale === rowScale) return normalizeBoardScale(columnScale);
+    }
+    return 1;
+  }
+
+  function boardForScale(value) {
+    const scale = normalizeBoardScale(value);
+    const cell = BASE_BOARD.cell / scale;
+    const gap = BASE_BOARD.gap / scale;
+    const rowStep = BASE_BOARD.rowStep / scale;
+    return {
+      ...BASE_BOARD,
+      scale,
+      columns: BASE_BOARD.columns * scale,
+      rows: BASE_BOARD.rows * scale,
+      cell,
+      gap,
+      rowStep,
+      visualScale: 1 / scale,
+      ballRadius: 9 / scale,
+      ballCollisionRadius: 10 / scale,
+      ballSpeed: 760 / scale,
+      pickupRadius: 19 / scale,
+      ionRadius: 20 / scale,
+      ghostRadius: 20 / scale,
+      supernovaCoreRadius: 22 / scale,
+      supernovaExplosionRadius: cell * 0.75
+    };
+  }
+
+  const BOARD = {};
+  for (const key of Object.keys(boardForScale(1))) {
+    Object.defineProperty(BOARD, key, { enumerable: true, get: () => boardForScale(activeBoardScale)[key] });
+  }
+
   const SCHEMA_VERSION = 1;
   const MODES = Object.freeze({ CLEAR_LIMITED: "clear_limited", DESCENT: "descent" });
-
   const BLOCK_VARIANTS = new Set(["normal", "dense", "regenerative", "phase", "black_hole"]);
   const TRIANGLE_ORIENTATIONS = new Set(["top_left", "top_right", "bottom_left", "bottom_right"]);
   const POWER_TYPES = new Set(["ion", "ghost", "supernova"]);
@@ -33,11 +84,13 @@
   }
 
   function createDefaultLevel() {
+    activeBoardScale = 1;
     return {
       schemaVersion: SCHEMA_VERSION,
       levelId: "level_001",
       name: "New Ryko Level",
-      board: clone(BOARD),
+      boardScale: 1,
+      board: boardForScale(1),
       rules: {
         mode: MODES.CLEAR_LIMITED,
         startingBalls: 1,
@@ -55,8 +108,12 @@
     };
   }
 
-  function inBounds(column, row) {
-    return Number.isInteger(column) && column >= 0 && column < BOARD.columns && Number.isInteger(row) && row >= 0 && row < BOARD.rows;
+  function boardForLevel(level) {
+    return boardForScale(level?.boardScale ?? level?.board?.scale ?? 1);
+  }
+
+  function inBounds(column, row, board = boardForScale(activeBoardScale)) {
+    return Number.isInteger(column) && column >= 0 && column < board.columns && Number.isInteger(row) && row >= 0 && row < board.rows;
   }
 
   function cellKey(column, row) {
@@ -87,42 +144,41 @@
       return normalized;
     }
 
-    if (entity.kind === "pickup" && entity.type === "plus_ball") {
-      return { kind: "pickup", type: "plus_ball", column, row };
-    }
-
+    if (entity.kind === "pickup" && entity.type === "plus_ball") return { kind: "pickup", type: "plus_ball", column, row };
     if (entity.kind === "power" && POWER_TYPES.has(entity.type)) {
       const power = { kind: "power", type: entity.type, column, row };
       if (entity.type === "ion") power.orientation = entity.orientation === "vertical" ? "vertical" : "horizontal";
       return power;
     }
-
     return null;
   }
 
   function normalizeLevel(input) {
-    const base = createDefaultLevel();
     const source = input && typeof input === "object" ? input : {};
+    const scale = inferBoardScale(source);
+    activeBoardScale = scale;
+    const board = boardForScale(scale);
+    const base = createDefaultLevel();
+    activeBoardScale = scale;
     const level = createDefaultLevel();
+    activeBoardScale = scale;
     level.levelId = String(source.levelId || base.levelId).trim() || base.levelId;
     level.name = String(source.name || base.name).trim() || base.name;
+    level.boardScale = scale;
+    level.board = board;
     level.rules.mode = source.rules?.mode === MODES.DESCENT ? MODES.DESCENT : MODES.CLEAR_LIMITED;
     level.rules.startingBalls = Math.max(1, Math.trunc(Number(source.rules?.startingBalls) || 1));
     level.rules.moveLimit = Math.max(1, Math.trunc(Number(source.rules?.moveLimit) || 10));
     level.rules.loseCondition = level.rules.mode === MODES.DESCENT ? "block_reaches_launch_line" : "move_limit";
     level.rules.winCondition = "clear_all_content";
-    level.rules.descent = {
-      rowsPerMove: 1,
-      incomingSource: "authored",
-      loseWhenBlockReachesLaunchLine: true
-    };
+    level.rules.descent = { rowsPerMove: 1, incomingSource: "authored", loseWhenBlockReachesLaunchLine: true };
 
     const initial = Array.isArray(source.initialBoard) ? source.initialBoard : [];
     const occupied = new Set();
     level.initialBoard = [];
     for (const raw of initial) {
       const entity = normalizeEntity(raw);
-      if (!entity || !inBounds(entity.column, entity.row)) continue;
+      if (!entity || !inBounds(entity.column, entity.row, board)) continue;
       const key = cellKey(entity.column, entity.row);
       if (occupied.has(key)) continue;
       occupied.add(key);
@@ -136,7 +192,7 @@
       const normalizedCells = [];
       for (const raw of cells) {
         const entity = normalizeEntity({ ...raw, row: 0 }, 0);
-        if (!entity || entity.column < 0 || entity.column >= BOARD.columns) continue;
+        if (!entity || entity.column < 0 || entity.column >= board.columns) continue;
         const key = String(entity.column);
         if (rowOccupied.has(key)) continue;
         rowOccupied.add(key);
@@ -145,11 +201,13 @@
       return { afterMove: index + 1, cells: normalizedCells };
     });
 
+    activeBoardScale = scale;
     return level;
   }
 
   function validateLevel(input) {
     const level = normalizeLevel(input);
+    const board = boardForLevel(level);
     const errors = [];
     const warnings = [];
 
@@ -160,14 +218,11 @@
 
     const allBlocks = [];
     const inspectEntity = (entity, label) => {
-      if (entity.kind === "block") {
-        allBlocks.push(entity);
-        if (!Number.isInteger(entity.hp) || entity.hp < 1) errors.push(`${label}: block HP must be a positive integer.`);
-        if (entity.shape === "triangle" && entity.variant !== "normal") errors.push(`${label}: triangles cannot use special variants.`);
-        if (entity.variant === "black_hole" && (!Array.isArray(entity.absorbingSides) || entity.absorbingSides.length === 0)) {
-          errors.push(`${label}: Black Hole needs at least one absorbing side.`);
-        }
-      }
+      if (entity.kind !== "block") return;
+      allBlocks.push(entity);
+      if (!Number.isInteger(entity.hp) || entity.hp < 1) errors.push(`${label}: block HP must be a positive integer.`);
+      if (entity.shape === "triangle" && entity.variant !== "normal") errors.push(`${label}: triangles cannot use special variants.`);
+      if (entity.variant === "black_hole" && (!Array.isArray(entity.absorbingSides) || entity.absorbingSides.length === 0)) errors.push(`${label}: Black Hole needs at least one absorbing side.`);
     };
 
     level.initialBoard.forEach((entity, index) => inspectEntity(entity, `Initial cell ${index + 1}`));
@@ -177,7 +232,7 @@
     if (initialBlocks === 0) errors.push("The initial board needs at least one block so the level cannot complete before play begins.");
 
     if (level.rules.mode === MODES.DESCENT) {
-      const dangerBlocks = level.initialBoard.filter((entity) => entity.kind === "block" && entity.row >= BOARD.rows - 2);
+      const dangerBlocks = level.initialBoard.filter((entity) => entity.kind === "block" && entity.row >= board.rows - 2);
       if (dangerBlocks.length) warnings.push(`${dangerBlocks.length} block(s) start on or one row above the danger line; they must be destroyed before the next descent.`);
       if (level.incomingRows.length === 0) warnings.push("No authored incoming rows: the initial board will only move downward each turn.");
     } else if (level.incomingRows.some((row) => row.cells.length)) {
@@ -185,18 +240,16 @@
     }
 
     const nonEmptyIncoming = level.incomingRows.reduce((sum, row) => sum + row.cells.length, 0);
-    if (allBlocks.length > 0 && allBlocks.every((block) => block.hp === 1) && level.rules.startingBalls > 20) {
-      warnings.push("All blocks have 1 HP while starting ball count is high; this may be intentionally very easy.");
-    }
-    if (level.rules.mode === MODES.DESCENT && nonEmptyIncoming === 0 && initialBlocks < 3) {
-      warnings.push("This descent level contains very little authored content.");
-    }
+    if (allBlocks.length > 0 && allBlocks.every((block) => block.hp === 1) && level.rules.startingBalls > 20) warnings.push("All blocks have 1 HP while starting ball count is high; this may be intentionally very easy.");
+    if (level.rules.mode === MODES.DESCENT && nonEmptyIncoming === 0 && initialBlocks < 3) warnings.push("This descent level contains very little authored content.");
+    if (level.boardScale >= 3) warnings.push(`${board.columns}×${board.rows} is a high-density zoom-out board; verify HP readability on a phone build.`);
 
     return { level, errors, warnings, valid: errors.length === 0 };
   }
 
   function simulateDescent(input, completedMoves) {
     const level = normalizeLevel(input);
+    const board = boardForLevel(level);
     const moves = Math.max(0, Math.trunc(Number(completedMoves) || 0));
     let entities = level.initialBoard.map((entity) => clone(entity));
     let danger = false;
@@ -206,20 +259,15 @@
       const shifted = [];
       for (const entity of entities) {
         const next = { ...entity, row: entity.row + 1 };
-        // Matches main.gd: row 8 has its bottom edge exactly on LAUNCH_LINE_Y,
-        // so reaching the last playable row after an advance is already a loss.
-        if (next.kind === "block" && next.row >= BOARD.rows - 1) {
+        if (next.kind === "block" && next.row >= board.rows - 1) {
           danger = true;
           if (dangerAtMove === null) dangerAtMove = move;
         }
-        if (next.row < BOARD.rows) shifted.push(next);
+        if (next.row < board.rows) shifted.push(next);
       }
       entities = shifted;
-
       const incoming = level.incomingRows[move - 1];
-      if (incoming) {
-        for (const entity of incoming.cells) entities.push({ ...clone(entity), row: 0 });
-      }
+      if (incoming) for (const entity of incoming.cells) entities.push({ ...clone(entity), row: 0 });
     }
 
     return { entities, danger, dangerAtMove, completedMoves: moves };
@@ -229,19 +277,28 @@
     const validation = validateLevel(input);
     const level = validation.level;
     level.schemaVersion = SCHEMA_VERSION;
-    level.board = clone(BOARD);
-    if (level.rules.mode === MODES.CLEAR_LIMITED) {
-      level.rules.loseCondition = "move_limit";
-    } else {
-      level.rules.loseCondition = "block_reaches_launch_line";
-    }
+    level.board = boardForLevel(level);
+    level.rules.loseCondition = level.rules.mode === MODES.CLEAR_LIMITED ? "move_limit" : "block_reaches_launch_line";
+    activeBoardScale = level.boardScale;
     return JSON.stringify(level, null, 2);
   }
 
+  function setActiveBoardScale(value) {
+    activeBoardScale = normalizeBoardScale(value);
+    return boardForScale(activeBoardScale);
+  }
+
   return {
+    BASE_BOARD,
     BOARD,
     SCHEMA_VERSION,
     MODES,
+    MIN_BOARD_SCALE,
+    MAX_BOARD_SCALE,
+    boardForScale,
+    boardForLevel,
+    normalizeBoardScale,
+    setActiveBoardScale,
     createDefaultLevel,
     normalizeLevel,
     normalizeEntity,
