@@ -10,6 +10,7 @@ on:
       - ".github/workflows/level-editor-pages.yml"
   workflow_dispatch:
 
+# Repository Settings > Pages must use GitHub Actions as the publishing source.
 permissions:
   contents: read
   pages: write
