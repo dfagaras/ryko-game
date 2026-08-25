@@ -5,6 +5,9 @@ const BoardProfile = preload("res://scripts/level_board_profile.gd")
 const SUPPORTED_SCHEMA_VERSION := 1
 const SUPPORTED_MODES: Array[String] = ["clear_limited", "descent"]
 const VALID_BLACK_HOLE_SIDES: Array[String] = ["left", "right", "top", "bottom"]
+const DEFAULT_BALL_SIZE_MULTIPLIER := 1.0
+const MIN_BALL_SIZE_MULTIPLIER := 0.65
+const MAX_BALL_SIZE_MULTIPLIER := 1.35
 
 
 static func load_from_file(path: String) -> Dictionary:
@@ -40,10 +43,21 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 	var rows := int(dimensions_result["rows"])
 	var profile := BoardProfile.from_dimensions(columns, rows)
 
+	var ball_result := _resolve_ball(raw)
+	if not bool(ball_result["valid"]):
+		errors.append(str(ball_result["error"]))
+	var ball_multiplier := float(ball_result["size_multiplier"])
+	profile["standard_ball_radius"] = float(profile["ball_radius"])
+	profile["standard_ball_collision_radius"] = float(profile["ball_collision_radius"])
+	profile["ball_size_multiplier"] = ball_multiplier
+	profile["ball_radius"] = float(profile["ball_radius"]) * ball_multiplier
+	profile["ball_collision_radius"] = float(profile["ball_collision_radius"]) * ball_multiplier
+
 	var level: Dictionary = raw.duplicate(true)
 	level["schemaVersion"] = SUPPORTED_SCHEMA_VERSION
 	level["boardColumns"] = columns
 	level["boardRows"] = rows
+	level["ball"] = {"sizeMultiplier": ball_multiplier}
 	var legacy_scale := int(profile["legacy_scale"])
 	if legacy_scale > 0:
 		level["boardScale"] = legacy_scale
@@ -114,6 +128,23 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 		"level": level,
 		"board_profile": profile,
 	}
+
+
+static func _resolve_ball(raw: Dictionary) -> Dictionary:
+	if not raw.has("ball"):
+		return {"valid": true, "size_multiplier": DEFAULT_BALL_SIZE_MULTIPLIER, "error": ""}
+	var ball_variant: Variant = raw.get("ball", {})
+	if typeof(ball_variant) != TYPE_DICTIONARY:
+		return {"valid": false, "size_multiplier": DEFAULT_BALL_SIZE_MULTIPLIER, "error": "ball must be an object."}
+	var ball: Dictionary = ball_variant
+	var multiplier := float(ball.get("sizeMultiplier", DEFAULT_BALL_SIZE_MULTIPLIER))
+	if multiplier < MIN_BALL_SIZE_MULTIPLIER or multiplier > MAX_BALL_SIZE_MULTIPLIER:
+		return {
+			"valid": false,
+			"size_multiplier": DEFAULT_BALL_SIZE_MULTIPLIER,
+			"error": "ball.sizeMultiplier must be between %.2fx and %.2fx." % [MIN_BALL_SIZE_MULTIPLIER, MAX_BALL_SIZE_MULTIPLIER]
+		}
+	return {"valid": true, "size_multiplier": snappedf(multiplier, 0.01), "error": ""}
 
 
 static func _resolve_dimensions(raw: Dictionary) -> Dictionary:
@@ -217,6 +248,9 @@ static func _board_json(profile: Dictionary) -> Dictionary:
 		"gridHeight": float(profile["grid_height"]),
 		"dangerRow": int(profile["danger_row"]),
 		"visualScale": float(profile["visual_scale"]),
+		"standardBallRadius": float(profile["standard_ball_radius"]),
+		"standardBallCollisionRadius": float(profile["standard_ball_collision_radius"]),
+		"ballSizeMultiplier": float(profile["ball_size_multiplier"]),
 		"ballRadius": float(profile["ball_radius"]),
 		"ballCollisionRadius": float(profile["ball_collision_radius"]),
 		"ballSpeed": float(profile["ball_speed"]),
