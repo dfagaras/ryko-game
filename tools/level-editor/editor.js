@@ -25,10 +25,11 @@
 
   const els = Object.fromEntries([
     "levelId", "levelName", "modeSelect", "startingBalls", "moveLimit", "moveLimitField", "modeNote", "defaultHp",
-    "toolbox", "boardGrid", "boardTitle", "clearBoardButton", "previewButton", "resetPreviewButton", "boardStatus",
-    "timelineCard", "timelineTabs", "addIncomingButton", "incomingEditor", "incomingEditorLabel", "removeIncomingButton",
-    "incomingStrip", "incomingSlotLabel", "selectionEmpty", "selectionEditor", "selectionName", "hpField", "selectedHp",
-    "blackHoleFields", "deleteSelectedButton", "validationSummary", "validationList", "jsonPreview", "loseContract",
+    "gridScalePicker", "gridScaleNote", "boardDimensions", "boardShell", "toolbox", "boardGrid", "boardTitle", "clearBoardButton",
+    "previewButton", "resetPreviewButton", "boardStatus", "timelineCard", "timelineTabs", "addIncomingButton", "incomingEditor",
+    "incomingEditorLabel", "removeIncomingButton", "incomingStrip", "incomingSlotLabel", "selectionEmpty", "selectionEditor",
+    "selectionName", "hpField", "selectedHp", "blackHoleFields", "deleteSelectedButton", "validationSummary", "validationList",
+    "jsonPreview", "loseContract", "contractScale", "contractGrid", "contractCell", "contractBall", "contractBallSpeed",
     "importButton", "copyButton", "downloadButton", "fileInput", "toast"
   ].map((id) => [id, document.getElementById(id)]));
 
@@ -62,6 +63,20 @@
     els.toast.classList.add("show");
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1600);
+  }
+
+  function applyGridPresentation() {
+    const scale = level.boardScale;
+    const board = level.board;
+    const root = document.documentElement;
+    root.style.setProperty("--grid-columns", String(board.columns));
+    root.style.setProperty("--grid-scale", String(scale));
+    root.style.setProperty("--gap", `${3 / scale}px`);
+    root.style.setProperty("--entity-border", `${Math.max(1, 4 / scale)}px`);
+    root.style.setProperty("--triangle-inset", `${Math.max(1, 5 / scale)}px`);
+    root.style.setProperty("--hp-size", `${Math.max(6, 15 / scale)}px`);
+    root.style.setProperty("--side-thickness", `${Math.max(1, 4 / scale)}px`);
+    els.boardShell.dataset.scale = String(scale);
   }
 
   function buildToolbox() {
@@ -108,6 +123,7 @@
       classes.push("block", entity.shape || "square", entity.variant || "normal");
       if (entity.shape === "triangle") classes.push(entity.orientation || "top_left");
     } else classes.push(entity.kind, entity.type || "");
+    if (tiny) classes.push("tool-sample");
     wrapper.className = classes.join(" ");
 
     let art = null;
@@ -156,24 +172,42 @@
     return level.incomingRows[rowIndex]?.cells.find((item) => item.column === column) || null;
   }
 
+  function renderScalePicker() {
+    els.gridScalePicker.querySelectorAll("button[data-scale]").forEach((button) => {
+      const scale = Number(button.dataset.scale);
+      button.classList.toggle("active", scale === level.boardScale);
+      button.setAttribute("aria-pressed", scale === level.boardScale ? "true" : "false");
+    });
+    const gameplay = M.gameplayForScale(level.boardScale);
+    els.gridScaleNote.textContent = level.boardScale === 1
+      ? "Standard Ryko board."
+      : `Same physical board at ${level.boardScale}× resolution; pieces and ball are ${Math.round(gameplay.visualScale * 100)}% of standard size.`;
+  }
+
   function renderBoard() {
+    const board = level.board;
     const isDescent = level.rules.mode === M.MODES.DESCENT;
     const preview = isDescent && previewMoves > 0 ? M.simulateDescent(level, previewMoves) : null;
     const boardEntities = preview ? preview.entities : level.initialBoard;
+    const entityMap = new Map(boardEntities.map((entity) => [`${entity.column}:${entity.row}`, entity]));
     els.boardGrid.innerHTML = "";
-    for (let row = 0; row < M.BOARD.rows; row += 1) {
-      for (let column = 0; column < M.BOARD.columns; column += 1) {
+
+    for (let row = 0; row < board.rows; row += 1) {
+      for (let column = 0; column < board.columns; column += 1) {
         const cell = document.createElement("div");
         cell.className = "board-cell";
         cell.dataset.column = column;
         cell.dataset.row = row;
+        cell.title = `Column ${column + 1}, row ${row + 1}`;
         if (!preview && selected?.scope === "initial" && selected.column === column && selected.row === row) cell.classList.add("selected");
-        if (preview && row === M.BOARD.rows - 1 && entityAtInitial(column, row, boardEntities)?.kind === "block") cell.classList.add("preview-danger");
-        const index = document.createElement("span");
-        index.className = "cell-index";
-        index.textContent = `${row + 1}.${column + 1}`;
-        cell.appendChild(index);
-        const entity = entityAtInitial(column, row, boardEntities);
+        const entity = entityMap.get(`${column}:${row}`) || null;
+        if (preview && row === board.rows - 1 && entity?.kind === "block") cell.classList.add("preview-danger");
+        if (level.boardScale === 1) {
+          const index = document.createElement("span");
+          index.className = "cell-index";
+          index.textContent = `${row + 1}.${column + 1}`;
+          cell.appendChild(index);
+        }
         if (entity) cell.appendChild(makeEntityElement(entity));
         cell.addEventListener("click", () => {
           if (preview) return;
@@ -184,6 +218,7 @@
     }
 
     els.boardTitle.textContent = preview ? `Preview after ${previewMoves} move${previewMoves === 1 ? "" : "s"}` : "Initial board";
+    els.boardDimensions.textContent = `${board.columns} columns × ${board.rows} playable rows // ${level.boardScale}× zoom-out grid`;
     els.previewButton.hidden = !isDescent;
     els.resetPreviewButton.hidden = !isDescent || previewMoves === 0;
     els.incomingStrip.hidden = !isDescent || previewMoves === 0;
@@ -193,15 +228,16 @@
       els.boardStatus.className = `board-status${preview.danger ? " danger" : ""}`;
       renderPreviewIncoming();
     } else {
-      els.boardStatus.textContent = isDescent ? "Each completed volley shifts every surviving entity down by exactly one row." : `Player must clear the authored board within ${level.rules.moveLimit} moves. The board does not descend.`;
+      els.boardStatus.textContent = isDescent ? "Each completed volley shifts every surviving entity down by exactly one grid row." : `Player must clear the authored board within ${level.rules.moveLimit} moves. The board does not descend.`;
       els.boardStatus.className = "board-status";
     }
   }
 
   function renderPreviewIncoming() {
+    const board = level.board;
     els.incomingStrip.innerHTML = "";
     const next = level.incomingRows[previewMoves];
-    for (let column = 0; column < M.BOARD.columns; column += 1) {
+    for (let column = 0; column < board.columns; column += 1) {
       const cell = document.createElement("div");
       cell.className = "incoming-cell";
       const entity = next?.cells.find((item) => item.column === column);
@@ -213,12 +249,13 @@
 
   function renderIncomingEditor() {
     if (level.rules.mode !== M.MODES.DESCENT) return;
+    const board = level.board;
     els.timelineTabs.innerHTML = "";
     if (level.incomingRows.length === 0) {
       activeIncomingIndex = 0;
       els.incomingEditorLabel.textContent = "No incoming rows yet";
       els.incomingEditor.innerHTML = "";
-      for (let column = 0; column < M.BOARD.columns; column += 1) {
+      for (let column = 0; column < board.columns; column += 1) {
         const cell = document.createElement("div");
         cell.className = "incoming-cell";
         cell.title = "Add the first incoming row";
@@ -246,7 +283,7 @@
 
     els.incomingEditorLabel.textContent = `Incoming after move ${activeIncomingIndex + 1}`;
     els.incomingEditor.innerHTML = "";
-    for (let column = 0; column < M.BOARD.columns; column += 1) {
+    for (let column = 0; column < board.columns; column += 1) {
       const cell = document.createElement("div");
       cell.className = "incoming-cell";
       if (selected?.scope === "incoming" && selected.rowIndex === activeIncomingIndex && selected.column === column) cell.classList.add("selected");
@@ -343,9 +380,20 @@
     els.moveLimitField.hidden = descent;
     els.timelineCard.hidden = !descent;
     els.modeNote.textContent = descent
-      ? "Puzzle board + authored future rows. After every volley all surviving content moves down exactly one row; reaching the launch line loses the level."
+      ? "Puzzle board + authored future rows. After every volley all surviving content moves down exactly one grid row; reaching the launch line loses the level."
       : "All authored pieces start on the board. No descent and no row spawning; clear everything before the move limit expires.";
     els.loseContract.querySelector("dd").textContent = descent ? "Block reaches launch line" : `Exceed ${level.rules.moveLimit} moves`;
+
+    const gameplay = M.gameplayForScale(level.boardScale);
+    els.contractScale.textContent = `${level.boardScale}× zoom-out`;
+    els.contractGrid.textContent = `${level.board.columns} × ${level.board.rows}`;
+    els.contractCell.textContent = `${formatMetric(level.board.cell)} px`;
+    els.contractBall.textContent = `${formatMetric(gameplay.ballRadius)} px radius`;
+    els.contractBallSpeed.textContent = `${formatMetric(gameplay.ballSpeed)} px/s base`;
+  }
+
+  function formatMetric(value) {
+    return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString();
   }
 
   function renderValidation() {
@@ -368,7 +416,9 @@
 
   function renderAll() {
     level = M.normalizeLevel(level);
+    applyGridPresentation();
     renderMeta();
+    renderScalePicker();
     buildToolbox();
     renderBoard();
     renderIncomingEditor();
@@ -399,6 +449,23 @@
     level.name = els.levelName.value;
     renderValidation();
     saveDraft();
+  }));
+
+  els.gridScalePicker.querySelectorAll("button[data-scale]").forEach((button) => button.addEventListener("click", () => {
+    const nextScale = Number(button.dataset.scale);
+    if (nextScale === level.boardScale) return;
+    if (M.hasAuthoredContent(level)) {
+      const confirmed = window.confirm("Changing grid scale changes the coordinate system. Clear authored board content and switch scale?");
+      if (!confirmed) return;
+    }
+    level.boardScale = M.normalizeScale(nextScale);
+    level.board = M.boardForScale(level.boardScale);
+    level.initialBoard = [];
+    level.incomingRows = [];
+    activeIncomingIndex = 0;
+    selected = null;
+    previewMoves = 0;
+    renderAll();
   }));
 
   els.clearBoardButton.addEventListener("click", () => {
@@ -478,13 +545,14 @@
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
-      if (Number(parsed.schemaVersion ?? 1) !== M.SCHEMA_VERSION) throw new Error(`Unsupported schemaVersion ${parsed.schemaVersion}`);
+      const schemaVersion = Number(parsed.schemaVersion ?? 1);
+      if (!M.SUPPORTED_SCHEMA_VERSIONS.includes(schemaVersion)) throw new Error(`Unsupported schemaVersion ${parsed.schemaVersion}`);
       level = M.normalizeLevel(parsed);
       activeIncomingIndex = 0;
       selected = null;
       previewMoves = 0;
       renderAll();
-      showToast("Level imported");
+      showToast(schemaVersion === 1 ? "Legacy level imported and upgraded" : "Level imported");
     } catch (error) {
       window.alert(`Could not import this level: ${error.message}`);
     } finally {
