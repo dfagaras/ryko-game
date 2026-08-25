@@ -14,14 +14,15 @@ const MENU_SETTINGS_PRESSED_TEXTURE: Texture2D = preload("res://assets/ui/menu/b
 const MENU_HOW_TO_PLAY_TEXTURE: Texture2D = preload("res://assets/ui/menu/btn_how_to_play.png")
 const MENU_HOW_TO_PLAY_PRESSED_TEXTURE: Texture2D = preload("res://assets/ui/menu/btn_how_to_play_pressed.png")
 
-# The new board keeps the popup entirely between the established 240 px header
-# and 152 px footer on the 720x1280 logical canvas. Five 3:1 button assets fit
-# inside its usable teal face with equal spacing and comfortable side margins.
-const POPUP_PANEL_RECT := Rect2(50.0, 270.0, 620.0, 826.7)
-const POPUP_BUTTON_SIZE := Vector2(390.0, 130.0)
-const POPUP_BUTTON_X := 165.0
-const POPUP_BUTTON_START_Y := 400.0
-const POPUP_BUTTON_STEP := 137.0
+# The illustrated panel has a substantial decorative top and bottom frame. Keep
+# the five interactive assets comfortably inside the actual teal face rather
+# than merely inside the texture rectangle. This leaves visible breathing room
+# below HOW TO PLAY on both standard and tall phone layouts.
+const POPUP_PANEL_RECT := Rect2(40.0, 250.0, 640.0, 853.33)
+const POPUP_BUTTON_SIZE := Vector2(370.0, 123.33)
+const POPUP_BUTTON_X := 175.0
+const POPUP_BUTTON_START_Y := 375.0
+const POPUP_BUTTON_STEP := 130.0
 const POPUP_PRESSED_OFFSET := Vector2(0.0, 2.0)
 const POPUP_DIM_ALPHA := 0.68
 
