@@ -21,8 +21,15 @@ const BASE_BOARD_TOP := 176.0
 const BASE_GRID_X := 40.0
 const BASE_GRID_Y := 268.0
 const BASE_LAUNCH_LINE_Y := 1092.0
+const BASE_GRID_WIDTH := BASE_COLUMNS * BASE_CELL + (BASE_COLUMNS - 1) * BASE_GAP
+const BASE_GRID_HEIGHT := BASE_ROWS * BASE_CELL + (BASE_ROWS - 1) * BASE_GAP
 const MIN_SCALE := 1
 const MAX_SCALE := 4
+
+
+static func is_supported_scale(value: Variant) -> bool:
+	var scale := int(value)
+	return scale >= MIN_SCALE and scale <= MAX_SCALE
 
 
 static func normalize_scale(value: Variant) -> int:
@@ -32,15 +39,24 @@ static func normalize_scale(value: Variant) -> int:
 static func from_scale(value: Variant) -> Dictionary:
 	var scale := normalize_scale(value)
 	var visual_scale := 1.0 / float(scale)
+	var columns := BASE_COLUMNS * scale
+	var rows := BASE_ROWS * scale
 	var cell := BASE_CELL * visual_scale
-	var gap := BASE_GAP * visual_scale
+	var column_gap := (BASE_GRID_WIDTH - float(columns) * cell) / float(columns - 1)
+	var row_gap := (BASE_GRID_HEIGHT - float(rows) * cell) / float(rows - 1)
 	return {
 		"scale": scale,
-		"columns": BASE_COLUMNS * scale,
-		"rows": BASE_ROWS * scale,
+		"columns": columns,
+		"rows": rows,
 		"cell": cell,
-		"gap": gap,
-		"row_step": BASE_ROW_STEP * visual_scale,
+		# Keep gap for compatibility with editor JSON; authored runtime should use
+		# column_gap / row_gap because the fixed 7x9 footprint has different
+		# horizontal and vertical total gap budgets.
+		"gap": column_gap,
+		"column_gap": column_gap,
+		"row_gap": row_gap,
+		"column_step": cell + column_gap,
+		"row_step": cell + row_gap,
 		"visual_scale": visual_scale,
 		"board_left": BASE_BOARD_LEFT,
 		"board_right": BASE_BOARD_RIGHT,
@@ -84,5 +100,5 @@ static func matches_level_board(level_data: Dictionary) -> bool:
 	var board: Dictionary = level_data.get("board", {})
 	if board.is_empty():
 		return true
-	return int(board.get("columns", profile.columns)) == int(profile.columns) \
-		and int(board.get("rows", profile.rows)) == int(profile.rows)
+	return int(board.get("columns", profile["columns"])) == int(profile["columns"]) \
+		and int(board.get("rows", profile["rows"])) == int(profile["rows"])
