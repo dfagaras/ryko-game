@@ -17,22 +17,29 @@
   function applyVisualScale() {
     const editorBaseCell = 58;
     const editorBaseGap = 3;
+    const editorBaseColumns = 7;
+    const editorBaseRows = 9;
+    const baseGridWidth = editorBaseColumns * editorBaseCell + (editorBaseColumns - 1) * editorBaseGap;
+    const baseGridHeight = editorBaseRows * editorBaseCell + (editorBaseRows - 1) * editorBaseGap;
     const scale = draft.boardScale;
     const cell = editorBaseCell / scale;
-    const gap = editorBaseGap / scale;
-    const gridWidth = board.columns * cell + Math.max(0, board.columns - 1) * gap;
+    const columnGap = (baseGridWidth - board.columns * cell) / (board.columns - 1);
+    const rowGap = (baseGridHeight - board.rows * cell) / (board.rows - 1);
 
     document.documentElement.style.setProperty("--cell", `${cell}px`);
-    document.documentElement.style.setProperty("--gap", `${gap}px`);
+    document.documentElement.style.setProperty("--gap", `${columnGap}px`);
 
     const template = `repeat(${board.columns}, var(--cell))`;
     document.querySelectorAll(".board-grid, .incoming-strip, .incoming-editor").forEach((grid) => {
       grid.style.gridTemplateColumns = template;
       grid.style.gridAutoRows = "var(--cell)";
+      grid.style.columnGap = `${columnGap}px`;
+      grid.style.rowGap = `${rowGap}px`;
+      grid.style.width = `${baseGridWidth}px`;
     });
 
     const shell = document.querySelector(".board-shell");
-    if (shell) shell.style.width = `${gridWidth + 28}px`;
+    if (shell) shell.style.width = `${baseGridWidth + 28}px`;
 
     const hpSize = Math.max(5.5, 15 / scale);
     const outline = Math.max(1, 4 / scale);
@@ -98,7 +105,15 @@
       if (label === "Playable rows") value.textContent = String(board.rows);
     }
     const cellContract = [...contract].find((row) => row.querySelector("dt")?.textContent === "Cells")?.querySelector("dd");
-    if (cellContract) cellContract.textContent = `${board.cell.toFixed(board.cell % 1 ? 1 : 0)} px + ${board.gap.toFixed(board.gap % 1 ? 1 : 0)} px gap`;
+    if (cellContract) {
+      const xGap = Number(board.columnGap ?? board.gap);
+      const yGap = Number(board.rowGap ?? board.gap);
+      cellContract.textContent = `${format(board.cell)} px cell · ${format(xGap)} / ${format(yGap)} px gaps`;
+    }
+  }
+
+  function format(value) {
+    return Number.isInteger(value) ? String(value) : Number(value.toFixed(2)).toString();
   }
 
   injectScaleControl();
