@@ -21,6 +21,8 @@
     rowStep: 92
   });
 
+  const BASE_GRID_WIDTH = BASE_BOARD.columns * BASE_BOARD.cell + (BASE_BOARD.columns - 1) * BASE_BOARD.gap;
+  const BASE_GRID_HEIGHT = BASE_BOARD.rows * BASE_BOARD.cell + (BASE_BOARD.rows - 1) * BASE_BOARD.gap;
   const MIN_BOARD_SCALE = 1;
   const MAX_BOARD_SCALE = 4;
   let activeBoardScale = 1;
@@ -45,16 +47,23 @@
 
   function boardForScale(value) {
     const scale = normalizeBoardScale(value);
+    const columns = BASE_BOARD.columns * scale;
+    const rows = BASE_BOARD.rows * scale;
     const cell = BASE_BOARD.cell / scale;
-    const gap = BASE_BOARD.gap / scale;
-    const rowStep = BASE_BOARD.rowStep / scale;
+    const columnGap = columns > 1 ? (BASE_GRID_WIDTH - columns * cell) / (columns - 1) : 0;
+    const rowGap = rows > 1 ? (BASE_GRID_HEIGHT - rows * cell) / (rows - 1) : 0;
+    const columnStep = cell + columnGap;
+    const rowStep = cell + rowGap;
     return {
       ...BASE_BOARD,
       scale,
-      columns: BASE_BOARD.columns * scale,
-      rows: BASE_BOARD.rows * scale,
+      columns,
+      rows,
       cell,
-      gap,
+      gap: columnGap,
+      columnGap,
+      rowGap,
+      columnStep,
       rowStep,
       visualScale: 1 / scale,
       ballRadius: 9 / scale,
@@ -290,6 +299,8 @@
 
   return {
     BASE_BOARD,
+    BASE_GRID_WIDTH,
+    BASE_GRID_HEIGHT,
     BOARD,
     SCHEMA_VERSION,
     MODES,
