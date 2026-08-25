@@ -20,6 +20,7 @@ let result = M.validateLevel(clearLevel);
 assert.equal(result.valid, true, result.errors.join("; "));
 assert.equal(result.level.board.columns, 7);
 assert.equal(result.level.board.rows, 9);
+assert.equal(result.level.ball.sizeMultiplier, 1);
 assertFixedFootprint(result.level.board);
 
 for (const [columns, rows] of [[8, 10], [9, 11], [10, 13], [14, 18], [28, 36]]) {
@@ -44,6 +45,38 @@ const eightByTen = M.normalizeLevel({
 });
 assert.equal(eightByTen.board.scale, 0);
 assertFixedFootprint(eightByTen.board);
+
+const smallBall = M.normalizeLevel({
+  ...eightByTen,
+  ball: { sizeMultiplier: 0.85 }
+});
+let ballMetrics = M.ballMetricsForLevel(smallBall);
+assert.equal(smallBall.ball.sizeMultiplier, 0.85);
+closeTo(ballMetrics.selectedRadius, ballMetrics.standardRadius * 0.85);
+closeTo(ballMetrics.selectedCollisionRadius, ballMetrics.standardCollisionRadius * 0.85);
+assert.equal(M.validateLevel(smallBall).valid, true);
+
+const largeBall = M.normalizeLevel({
+  ...eightByTen,
+  ball: { sizeMultiplier: 1.3 }
+});
+ballMetrics = M.ballMetricsForLevel(largeBall);
+assert.equal(largeBall.ball.sizeMultiplier, 1.3);
+closeTo(ballMetrics.selectedRadius, ballMetrics.standardRadius * 1.3);
+
+result = M.validateLevel({
+  ...eightByTen,
+  ball: { sizeMultiplier: 1.5 }
+});
+assert.equal(result.valid, false);
+assert.match(result.errors.join("\n"), /Ball size multiplier/i);
+
+const legacyWithoutBall = M.normalizeLevel({
+  levelId: "legacy_no_ball", name: "Legacy without ball", boardColumns: 10, boardRows: 13,
+  rules: { mode: "clear_limited", startingBalls: 1, moveLimit: 8 },
+  initialBoard: [{ kind: "block", shape: "square", variant: "normal", hp: 5, column: 0, row: 0 }]
+});
+assert.equal(legacyWithoutBall.ball.sizeMultiplier, 1);
 
 const legacyScale = M.normalizeLevel({
   levelId: "legacy_scaled", name: "Legacy scaled board", boardScale: 2,
@@ -75,16 +108,18 @@ assert.equal(M.simulateDescent(descent, 1).danger, false);
 assert.equal(M.simulateDescent(descent, 2).danger, true);
 assert.equal(M.simulateDescent(descent, 2).dangerAtMove, 2);
 
-const arbitraryExport = JSON.parse(M.toExportJson(eightByTen));
+const arbitraryExport = JSON.parse(M.toExportJson(smallBall));
 assert.equal(arbitraryExport.boardColumns, 8);
 assert.equal(arbitraryExport.boardRows, 10);
 assert.equal(arbitraryExport.boardScale, undefined);
 assert.equal(arbitraryExport.board.scale, undefined);
+assert.equal(arbitraryExport.ball.sizeMultiplier, 0.85);
 assertFixedFootprint(arbitraryExport.board);
 
 const legacyExport = JSON.parse(M.toExportJson(legacyScale));
 assert.equal(legacyExport.boardScale, 2);
 assert.equal(legacyExport.board.scale, 2);
+assert.equal(legacyExport.ball.sizeMultiplier, 1);
 assertFixedFootprint(legacyExport.board);
 
-console.log("RYKO flexible authored board validation: PASS");
+console.log("RYKO flexible authored board + ball size validation: PASS");
