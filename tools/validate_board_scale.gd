@@ -40,6 +40,7 @@ func _validate_level_parser() -> void:
 		"levelId": "runtime_scale_4",
 		"name": "Runtime 28x36",
 		"boardScale": 4,
+		"ball": {"sizeMultiplier": 0.85},
 		"rules": {
 			"mode": "descent",
 			"startingBalls": 12,
@@ -70,8 +71,19 @@ func _validate_level_parser() -> void:
 	_check(int(board["dangerRow"]) == 35, "runtime danger row mismatch")
 	_check(is_equal_approx(float(board["gridWidth"]), 640.0), "runtime grid width mismatch")
 	_check(is_equal_approx(float(board["gridHeight"]), 824.0), "runtime grid height mismatch")
-	_check(is_equal_approx(float(board["ballRadius"]), 2.25), "runtime ball radius mismatch")
+	_check(is_equal_approx(float(level["ball"]["sizeMultiplier"]), 0.85), "runtime ball multiplier mismatch")
+	_check(is_equal_approx(float(board["standardBallRadius"]), 2.25), "runtime standard ball radius mismatch")
+	_check(is_equal_approx(float(board["ballRadius"]), 1.9125), "runtime selected ball radius mismatch")
+	_check(is_equal_approx(float(board["standardBallCollisionRadius"]), 2.5), "runtime standard collision radius mismatch")
+	_check(is_equal_approx(float(board["ballCollisionRadius"]), 2.125), "runtime selected collision radius mismatch")
 	_check(is_equal_approx(float(board["ballSpeed"]), 190.0), "runtime ball speed mismatch")
+
+	var default_ball_source: Dictionary = source.duplicate(true)
+	default_ball_source.erase("ball")
+	var default_parsed := LevelDefinition.normalize_level(default_ball_source)
+	_check(bool(default_parsed["valid"]), "legacy level without ball config was rejected")
+	_check(is_equal_approx(float(default_parsed["level"]["ball"]["sizeMultiplier"]), 1.0), "legacy ball multiplier did not default to 1x")
+	_check(is_equal_approx(float(default_parsed["level"]["board"]["ballRadius"]), 2.25), "legacy level did not keep standard ball radius")
 
 
 func _validate_invalid_contracts() -> void:
@@ -98,6 +110,20 @@ func _validate_invalid_contracts() -> void:
 	}
 	var hole_result := LevelDefinition.normalize_level(bad_hole)
 	_check(not bool(hole_result["valid"]), "Black Hole without absorbing side was accepted")
+
+	var bad_ball := {
+		"schemaVersion": 1,
+		"levelId": "bad_ball",
+		"name": "Bad ball",
+		"boardColumns": 10,
+		"boardRows": 13,
+		"ball": {"sizeMultiplier": 1.5},
+		"rules": {"mode": "clear_limited", "startingBalls": 1, "moveLimit": 5},
+		"initialBoard": [{"kind": "block", "shape": "square", "variant": "normal", "hp": 3, "column": 0, "row": 0}],
+		"incomingRows": []
+	}
+	var ball_result := LevelDefinition.normalize_level(bad_ball)
+	_check(not bool(ball_result["valid"]), "unsupported ball size was accepted")
 
 
 func _check(condition: bool, message: String) -> void:
