@@ -5,7 +5,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const BOARD = Object.freeze({
+  const BASE_BOARD = Object.freeze({
     logicalWidth: 720,
     logicalHeight: 1280,
     boardLeft: 28,
@@ -21,7 +21,21 @@
     rowStep: 92
   });
 
-  const SCHEMA_VERSION = 1;
+  const BASE_GAMEPLAY = Object.freeze({
+    ballRadius: 9,
+    ballCollisionRadius: 10,
+    ballSpeed: 760,
+    pickupRadius: 19,
+    blockOutlineWidth: 6,
+    ionBeamRadius: 20,
+    ghostCoreRadius: 20,
+    supernovaCoreRadius: 22
+  });
+
+  const BASE_GRID_WIDTH = BASE_BOARD.columns * BASE_BOARD.cell + (BASE_BOARD.columns - 1) * BASE_BOARD.gap;
+  const SUPPORTED_SCALES = Object.freeze([1, 2, 3, 4]);
+  const SCHEMA_VERSION = 2;
+  const SUPPORTED_SCHEMA_VERSIONS = Object.freeze([1, 2]);
   const MODES = Object.freeze({ CLEAR_LIMITED: "clear_limited", DESCENT: "descent" });
 
   const BLOCK_VARIANTS = new Set(["normal", "dense", "regenerative", "phase", "black_hole"]);
@@ -32,12 +46,78 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function roundMetric(value) {
+    return Math.round(value * 10000) / 10000;
+  }
+
+  function normalizeScale(value) {
+    const scale = Math.trunc(Number(value) || 1);
+    return SUPPORTED_SCALES.includes(scale) ? scale : 1;
+  }
+
+  function boardForScale(value) {
+    const scale = normalizeScale(value);
+    const columns = BASE_BOARD.columns * scale;
+    const rows = BASE_BOARD.rows * scale;
+    const cell = BASE_BOARD.cell / scale;
+    const gap = (BASE_GRID_WIDTH - columns * cell) / (columns - 1);
+    const rowStep = cell + gap;
+    const gridHeight = rows * cell + (rows - 1) * gap;
+
+    return {
+      logicalWidth: BASE_BOARD.logicalWidth,
+      logicalHeight: BASE_BOARD.logicalHeight,
+      boardLeft: BASE_BOARD.boardLeft,
+      boardRight: BASE_BOARD.boardRight,
+      boardTop: BASE_BOARD.boardTop,
+      gridX: BASE_BOARD.gridX,
+      gridY: roundMetric(BASE_BOARD.launchLineY - gridHeight),
+      launchLineY: BASE_BOARD.launchLineY,
+      columns,
+      rows,
+      cell: roundMetric(cell),
+      gap: roundMetric(gap),
+      rowStep: roundMetric(rowStep)
+    };
+  }
+
+  function gameplayForScale(value) {
+    const scale = normalizeScale(value);
+    const board = boardForScale(scale);
+    return {
+      visualScale: 1 / scale,
+      ballRadius: BASE_GAMEPLAY.ballRadius / scale,
+      ballCollisionRadius: BASE_GAMEPLAY.ballCollisionRadius / scale,
+      ballSpeed: BASE_GAMEPLAY.ballSpeed / scale,
+      pickupRadius: BASE_GAMEPLAY.pickupRadius / scale,
+      blockOutlineWidth: BASE_GAMEPLAY.blockOutlineWidth / scale,
+      ionBeamRadius: BASE_GAMEPLAY.ionBeamRadius / scale,
+      ghostCoreRadius: BASE_GAMEPLAY.ghostCoreRadius / scale,
+      supernovaCoreRadius: BASE_GAMEPLAY.supernovaCoreRadius / scale,
+      supernovaExplosionRadius: board.cell * 0.75
+    };
+  }
+
+  function inferScale(source) {
+    if (source && source.boardScale !== undefined) return normalizeScale(source.boardScale);
+    if (source?.board?.scale !== undefined) return normalizeScale(source.board.scale);
+    const columns = Number(source?.board?.columns);
+    const rows = Number(source?.board?.rows);
+    if (Number.isInteger(columns) && Number.isInteger(rows) && columns % 7 === 0 && rows % 9 === 0) {
+      const columnScale = columns / 7;
+      const rowScale = rows / 9;
+      if (columnScale === rowScale && SUPPORTED_SCALES.includes(columnScale)) return columnScale;
+    }
+    return 1;
+  }
+
   function createDefaultLevel() {
     return {
       schemaVersion: SCHEMA_VERSION,
       levelId: "level_001",
       name: "New Ryko Level",
-      board: clone(BOARD),
+      boardScale: 1,
+      board: boardForScale(1),
       rules: {
         mode: MODES.CLEAR_LIMITED,
         startingBalls: 1,
@@ -55,8 +135,8 @@
     };
   }
 
-  function inBounds(column, row) {
-    return Number.isInteger(column) && column >= 0 && column < BOARD.columns && Number.isInteger(row) && row >= 0 && row < BOARD.rows;
+  function inBounds(column, row, board) {
+    return Number.isInteger(column) && column >= 0 && column < board.columns && Number.isInteger(row) && row >= 0 && row < board.rows;
   }
 
   function cellKey(column, row) {
@@ -104,8 +184,14 @@
     const base = createDefaultLevel();
     const source = input && typeof input === "object" ? input : {};
     const level = createDefaultLevel();
+    const boardScale = inferScale(source);
+    const board = boardForScale(boardScale);
+
+    level.schemaVersion = SCHEMA_VERSION;
     level.levelId = String(source.levelId || base.levelId).trim() || base.levelId;
     level.name = String(source.name || base.name).trim() || base.name;
+    level.boardScale = boardScale;
+    level.board = board;
     level.rules.mode = source.rules?.mode === MODES.DESCENT ? MODES.DESCENT : MODES.CLEAR_LIMITED;
     level.rules.startingBalls = Math.max(1, Math.trunc(Number(source.rules?.startingBalls) || 1));
     level.rules.moveLimit = Math.max(1, Math.trunc(Number(source.rules?.moveLimit) || 10));
@@ -122,7 +208,7 @@
     level.initialBoard = [];
     for (const raw of initial) {
       const entity = normalizeEntity(raw);
-      if (!entity || !inBounds(entity.column, entity.row)) continue;
+      if (!entity || !inBounds(entity.column, entity.row, board)) continue;
       const key = cellKey(entity.column, entity.row);
       if (occupied.has(key)) continue;
       occupied.add(key);
@@ -136,7 +222,7 @@
       const normalizedCells = [];
       for (const raw of cells) {
         const entity = normalizeEntity({ ...raw, row: 0 }, 0);
-        if (!entity || entity.column < 0 || entity.column >= BOARD.columns) continue;
+        if (!entity || entity.column < 0 || entity.column >= board.columns || !Number.isInteger(entity.column)) continue;
         const key = String(entity.column);
         if (rowOccupied.has(key)) continue;
         rowOccupied.add(key);
@@ -148,10 +234,16 @@
     return level;
   }
 
+  function hasAuthoredContent(input) {
+    const level = normalizeLevel(input);
+    return level.initialBoard.length > 0 || level.incomingRows.some((row) => row.cells.length > 0);
+  }
+
   function validateLevel(input) {
     const level = normalizeLevel(input);
     const errors = [];
     const warnings = [];
+    const board = level.board;
 
     if (!String(level.levelId).trim()) errors.push("Level ID is required.");
     if (!String(level.name).trim()) errors.push("Level name is required.");
@@ -177,7 +269,7 @@
     if (initialBlocks === 0) errors.push("The initial board needs at least one block so the level cannot complete before play begins.");
 
     if (level.rules.mode === MODES.DESCENT) {
-      const dangerBlocks = level.initialBoard.filter((entity) => entity.kind === "block" && entity.row >= BOARD.rows - 2);
+      const dangerBlocks = level.initialBoard.filter((entity) => entity.kind === "block" && entity.row >= board.rows - 2);
       if (dangerBlocks.length) warnings.push(`${dangerBlocks.length} block(s) start on or one row above the danger line; they must be destroyed before the next descent.`);
       if (level.incomingRows.length === 0) warnings.push("No authored incoming rows: the initial board will only move downward each turn.");
     } else if (level.incomingRows.some((row) => row.cells.length)) {
@@ -191,6 +283,9 @@
     if (level.rules.mode === MODES.DESCENT && nonEmptyIncoming === 0 && initialBlocks < 3) {
       warnings.push("This descent level contains very little authored content.");
     }
+    if (level.boardScale >= 3) {
+      warnings.push(`${level.boardScale}× is a micro-grid (${board.columns}×${board.rows}); HP and gameplay elements will intentionally render much smaller, like a zoomed-out board.`);
+    }
 
     return { level, errors, warnings, valid: errors.length === 0 };
   }
@@ -198,6 +293,7 @@
   function simulateDescent(input, completedMoves) {
     const level = normalizeLevel(input);
     const moves = Math.max(0, Math.trunc(Number(completedMoves) || 0));
+    const board = level.board;
     let entities = level.initialBoard.map((entity) => clone(entity));
     let danger = false;
     let dangerAtMove = null;
@@ -206,13 +302,11 @@
       const shifted = [];
       for (const entity of entities) {
         const next = { ...entity, row: entity.row + 1 };
-        // Matches main.gd: row 8 has its bottom edge exactly on LAUNCH_LINE_Y,
-        // so reaching the last playable row after an advance is already a loss.
-        if (next.kind === "block" && next.row >= BOARD.rows - 1) {
+        if (next.kind === "block" && next.row >= board.rows - 1) {
           danger = true;
           if (dangerAtMove === null) dangerAtMove = move;
         }
-        if (next.row < BOARD.rows) shifted.push(next);
+        if (next.row < board.rows) shifted.push(next);
       }
       entities = shifted;
 
@@ -229,22 +323,26 @@
     const validation = validateLevel(input);
     const level = validation.level;
     level.schemaVersion = SCHEMA_VERSION;
-    level.board = clone(BOARD);
-    if (level.rules.mode === MODES.CLEAR_LIMITED) {
-      level.rules.loseCondition = "move_limit";
-    } else {
-      level.rules.loseCondition = "block_reaches_launch_line";
-    }
+    level.board = boardForScale(level.boardScale);
+    level.rules.loseCondition = level.rules.mode === MODES.CLEAR_LIMITED ? "move_limit" : "block_reaches_launch_line";
     return JSON.stringify(level, null, 2);
   }
 
   return {
-    BOARD,
+    BASE_BOARD,
+    BASE_GAMEPLAY,
+    BOARD: boardForScale(1),
+    SUPPORTED_SCALES,
     SCHEMA_VERSION,
+    SUPPORTED_SCHEMA_VERSIONS,
     MODES,
+    normalizeScale,
+    boardForScale,
+    gameplayForScale,
     createDefaultLevel,
     normalizeLevel,
     normalizeEntity,
+    hasAuthoredContent,
     validateLevel,
     simulateDescent,
     toExportJson,
