@@ -29,6 +29,9 @@
   const MAX_BOARD_COLUMNS = 28;
   const MIN_BOARD_ROWS = 8;
   const MAX_BOARD_ROWS = 36;
+  const DEFAULT_BALL_SIZE_MULTIPLIER = 1.0;
+  const MIN_BALL_SIZE_MULTIPLIER = 0.65;
+  const MAX_BALL_SIZE_MULTIPLIER = 1.35;
   let activeBoardColumns = BASE_BOARD.columns;
   let activeBoardRows = BASE_BOARD.rows;
 
@@ -53,6 +56,18 @@
 
   function normalizeBoardRows(value) {
     return Math.min(MAX_BOARD_ROWS, Math.max(MIN_BOARD_ROWS, Math.trunc(Number(value) || BASE_BOARD.rows)));
+  }
+
+  function isSupportedBallSizeMultiplier(value) {
+    const multiplier = Number(value);
+    return Number.isFinite(multiplier) && multiplier >= MIN_BALL_SIZE_MULTIPLIER && multiplier <= MAX_BALL_SIZE_MULTIPLIER;
+  }
+
+  function normalizeBallSizeMultiplier(value) {
+    const parsed = Number(value);
+    const multiplier = Number.isFinite(parsed) ? parsed : DEFAULT_BALL_SIZE_MULTIPLIER;
+    const clamped = Math.min(MAX_BALL_SIZE_MULTIPLIER, Math.max(MIN_BALL_SIZE_MULTIPLIER, multiplier));
+    return Math.round(clamped * 100) / 100;
   }
 
   function legacyScaleForDimensions(columns, rows) {
@@ -125,6 +140,18 @@
     return boardForDimensions(BASE_BOARD.columns * scale, BASE_BOARD.rows * scale);
   }
 
+  function ballMetricsForLevel(level) {
+    const board = boardForLevel(level);
+    const sizeMultiplier = normalizeBallSizeMultiplier(level?.ball?.sizeMultiplier);
+    return {
+      sizeMultiplier,
+      standardRadius: board.ballRadius,
+      selectedRadius: board.ballRadius * sizeMultiplier,
+      standardCollisionRadius: board.ballCollisionRadius,
+      selectedCollisionRadius: board.ballCollisionRadius * sizeMultiplier
+    };
+  }
+
   const BOARD = {};
   for (const key of Object.keys(boardForDimensions(BASE_BOARD.columns, BASE_BOARD.rows))) {
     Object.defineProperty(BOARD, key, { enumerable: true, get: () => boardForDimensions(activeBoardColumns, activeBoardRows)[key] });
@@ -151,6 +178,9 @@
       boardColumns: BASE_BOARD.columns,
       boardRows: BASE_BOARD.rows,
       board: boardForDimensions(BASE_BOARD.columns, BASE_BOARD.rows),
+      ball: {
+        sizeMultiplier: DEFAULT_BALL_SIZE_MULTIPLIER
+      },
       rules: {
         mode: MODES.CLEAR_LIMITED,
         startingBalls: 1,
@@ -227,6 +257,9 @@
     level.boardRows = board.rows;
     level.boardScale = board.scale || 0;
     level.board = board;
+    level.ball = {
+      sizeMultiplier: normalizeBallSizeMultiplier(source?.ball?.sizeMultiplier ?? DEFAULT_BALL_SIZE_MULTIPLIER)
+    };
     level.rules.mode = source.rules?.mode === MODES.DESCENT ? MODES.DESCENT : MODES.CLEAR_LIMITED;
     level.rules.startingBalls = Math.max(1, Math.trunc(Number(source.rules?.startingBalls) || 1));
     level.rules.moveLimit = Math.max(1, Math.trunc(Number(source.rules?.moveLimit) || 10));
@@ -272,6 +305,7 @@
     const rawColumns = raw?.board?.columns ?? raw?.boardColumns;
     const rawRows = raw?.board?.rows ?? raw?.boardRows;
     const explicitScale = raw.boardScale ?? raw.board?.scale;
+    const rawBallMultiplier = raw?.ball?.sizeMultiplier;
     const level = normalizeLevel(raw);
     const board = boardForLevel(level);
     const errors = [];
@@ -284,6 +318,9 @@
     }
     if (rawColumns === undefined && rawRows === undefined && explicitScale !== undefined && explicitScale !== null && !isSupportedBoardScale(explicitScale)) {
       errors.push("Board scale must be 1, 2, 3 or 4 for legacy level files.");
+    }
+    if (rawBallMultiplier !== undefined && rawBallMultiplier !== null && !isSupportedBallSizeMultiplier(rawBallMultiplier)) {
+      errors.push(`Ball size multiplier must be between ${MIN_BALL_SIZE_MULTIPLIER.toFixed(2)}× and ${MAX_BALL_SIZE_MULTIPLIER.toFixed(2)}×.`);
     }
     if (!String(level.levelId).trim()) errors.push("Level ID is required.");
     if (!String(level.name).trim()) errors.push("Level name is required.");
@@ -358,6 +395,7 @@
     level.board = boardForLevel(level);
     level.boardColumns = level.board.columns;
     level.boardRows = level.board.rows;
+    level.ball = { sizeMultiplier: normalizeBallSizeMultiplier(level?.ball?.sizeMultiplier) };
     if (level.board.scale) level.boardScale = level.board.scale;
     else delete level.boardScale;
     if (!level.board.scale) delete level.board.scale;
@@ -393,15 +431,21 @@
     MAX_BOARD_COLUMNS,
     MIN_BOARD_ROWS,
     MAX_BOARD_ROWS,
+    DEFAULT_BALL_SIZE_MULTIPLIER,
+    MIN_BALL_SIZE_MULTIPLIER,
+    MAX_BALL_SIZE_MULTIPLIER,
     isSupportedBoardScale,
     isSupportedBoardDimensions,
+    isSupportedBallSizeMultiplier,
     legacyScaleForDimensions,
     boardForScale,
     boardForDimensions,
     boardForLevel,
+    ballMetricsForLevel,
     normalizeBoardScale,
     normalizeBoardColumns,
     normalizeBoardRows,
+    normalizeBallSizeMultiplier,
     setActiveBoardScale,
     setActiveBoardDimensions,
     createDefaultLevel,
