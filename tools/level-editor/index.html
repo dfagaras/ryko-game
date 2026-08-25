@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#071419" />
+  <title>RYKO Level Editor</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">RYKO // MISSION WORKBENCH</div>
+      <h1>Level Editor</h1>
+    </div>
+    <div class="top-actions">
+      <button class="button secondary" id="importButton">Import JSON</button>
+      <button class="button secondary" id="copyButton">Copy JSON</button>
+      <button class="button primary" id="downloadButton">Download JSON</button>
+      <input type="file" id="fileInput" accept="application/json,.json" hidden />
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="panel toolbox-panel">
+      <div class="panel-title">Mission setup</div>
+      <label class="field">Level ID<input id="levelId" value="level_001" /></label>
+      <label class="field">Name<input id="levelName" value="New Ryko Level" /></label>
+      <label class="field">Mode
+        <select id="modeSelect">
+          <option value="clear_limited">Clear board in N moves</option>
+          <option value="descent">Descending rows</option>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field">Starting balls<input id="startingBalls" type="number" min="1" value="1" /></label>
+        <label class="field" id="moveLimitField">Move limit<input id="moveLimit" type="number" min="1" value="10" /></label>
+      </div>
+      <div class="mode-note" id="modeNote"></div>
+
+      <div class="section-rule"></div>
+      <div class="panel-title">Tools</div>
+      <label class="field compact">Default block HP<input id="defaultHp" type="number" min="1" value="10" /></label>
+      <div id="toolbox" class="toolbox"></div>
+
+      <div class="section-rule"></div>
+      <div class="panel-title">Selected cell</div>
+      <div id="selectionEmpty" class="muted-copy">Choose Select, then click a piece to edit it.</div>
+      <div id="selectionEditor" class="selection-editor" hidden>
+        <div class="selection-name" id="selectionName"></div>
+        <label class="field" id="hpField">HP<input id="selectedHp" type="number" min="1" /></label>
+        <div id="blackHoleFields" hidden>
+          <div class="field-label">Absorbing sides</div>
+          <div class="check-grid">
+            <label><input type="checkbox" value="top" />Top</label>
+            <label><input type="checkbox" value="right" />Right</label>
+            <label><input type="checkbox" value="bottom" />Bottom</label>
+            <label><input type="checkbox" value="left" />Left</label>
+          </div>
+        </div>
+        <button class="button danger small" id="deleteSelectedButton">Delete selected</button>
+      </div>
+    </aside>
+
+    <section class="center-column">
+      <div class="board-card">
+        <div class="board-card-header">
+          <div>
+            <div class="eyebrow">7 columns × 9 playable rows</div>
+            <h2 id="boardTitle">Initial board</h2>
+          </div>
+          <div class="board-actions">
+            <button class="button ghost small" id="resetPreviewButton" hidden>Reset preview</button>
+            <button class="button secondary small" id="previewButton" hidden>Preview +1 move</button>
+            <button class="button danger small" id="clearBoardButton">Clear board</button>
+          </div>
+        </div>
+
+        <div class="board-shell">
+          <div class="incoming-slot-label" id="incomingSlotLabel" hidden>INCOMING ROW</div>
+          <div class="incoming-strip" id="incomingStrip" hidden></div>
+          <div class="board-grid" id="boardGrid" aria-label="RYKO board editor"></div>
+          <div class="launch-line"><span>LAUNCH / DANGER LINE</span></div>
+        </div>
+        <div class="board-status" id="boardStatus"></div>
+      </div>
+
+      <div class="timeline-card" id="timelineCard" hidden>
+        <div class="timeline-header">
+          <div>
+            <div class="eyebrow">Authored descent sequence</div>
+            <h2>Incoming rows</h2>
+          </div>
+          <button class="button secondary small" id="addIncomingButton">+ Add row</button>
+        </div>
+        <p class="muted-copy">After every completed volley the current board shifts down exactly one row. Row +1 enters after move 1, row +2 after move 2, and so on. Blank authored rows are allowed.</p>
+        <div id="timelineTabs" class="timeline-tabs"></div>
+        <div class="incoming-editor-wrap">
+          <div class="incoming-editor-label" id="incomingEditorLabel">Incoming after move 1</div>
+          <div id="incomingEditor" class="incoming-editor"></div>
+          <button class="button danger small" id="removeIncomingButton">Remove this row</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel inspector-panel">
+      <div class="panel-title">Validation</div>
+      <div id="validationSummary" class="validation-summary"></div>
+      <div id="validationList" class="validation-list"></div>
+
+      <div class="section-rule"></div>
+      <div class="panel-title">Level contract</div>
+      <dl class="contract-list">
+        <div><dt>Board</dt><dd>720×1280 logical canvas</dd></div>
+        <div><dt>Cells</dt><dd>88 px + 4 px gap</dd></div>
+        <div><dt>Columns</dt><dd>7</dd></div>
+        <div><dt>Playable rows</dt><dd>9</dd></div>
+        <div><dt>Win</dt><dd>Clear all authored content</dd></div>
+        <div id="loseContract"><dt>Lose</dt><dd>Exceed move limit</dd></div>
+      </dl>
+
+      <div class="section-rule"></div>
+      <div class="panel-title">JSON preview</div>
+      <pre id="jsonPreview" class="json-preview"></pre>
+      <div class="autosave-note">Autosaved in this browser.</div>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="model.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>
