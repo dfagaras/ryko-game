@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - "feature/**"
   workflow_dispatch:
 
 permissions:
@@ -15,8 +16,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out develop
+      - name: Check out source branch
         uses: actions/checkout@v5
+
+      - name: Validate level editor model
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/level-editor/model.js
+          node --check tools/level-editor/editor.js
+          node --check tools/level-editor/scale-controls.js
+          node tools/level-editor/validate-editor.mjs
 
       - name: Verify final header assets
         shell: bash
@@ -71,7 +81,7 @@ jobs:
             -keysize 2048 \
             -validity 10000
 
-      - name: Validate Godot project scripts and resources
+      - name: Validate Godot project scripts and board scale contract
         shell: bash
         run: |
           set -euo pipefail
@@ -84,17 +94,22 @@ jobs:
             https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
           mkdir -p "$godot_dir"
           unzip -q "$godot_zip" -d "$godot_dir"
+          godot="$godot_dir/Godot_v4.4.1-stable_linux.x86_64"
 
           XDG_DATA_HOME="$RUNNER_TEMP/godot-data" \
           XDG_CONFIG_HOME="$RUNNER_TEMP/godot-config" \
           XDG_CACHE_HOME="$RUNNER_TEMP/godot-cache" \
-            "$godot_dir/Godot_v4.4.1-stable_linux.x86_64" \
-            --headless --path . --editor --quit 2>&1 | tee "$validation_log"
+            "$godot" --headless --path . --editor --quit 2>&1 | tee "$validation_log"
 
           if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|Could not preload resource|Error loading resource|Failed loading resource|Error importing" "$validation_log"; then
             echo "Godot script/resource validation failed."
             exit 1
           fi
+
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-data" \
+          XDG_CONFIG_HOME="$RUNNER_TEMP/godot-config" \
+          XDG_CACHE_HOME="$RUNNER_TEMP/godot-cache" \
+            "$godot" --headless --path . --script tools/validate_board_scale.gd
 
       - name: Export Android debug APK
         id: export
