@@ -94,7 +94,6 @@
       const label = row.querySelector("dt")?.textContent;
       const value = row.querySelector("dd");
       if (!value) continue;
-      if (label === "Cells") value.textContent = `${board.cell:g}`;
       if (label === "Columns") value.textContent = String(board.columns);
       if (label === "Playable rows") value.textContent = String(board.rows);
     }
