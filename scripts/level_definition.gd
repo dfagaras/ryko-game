@@ -33,17 +33,24 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 	if schema_version != SUPPORTED_SCHEMA_VERSION:
 		errors.append("Unsupported schemaVersion %d." % schema_version)
 
-	var scale_result := _resolve_scale(raw)
-	if not bool(scale_result["valid"]):
-		errors.append(str(scale_result["error"]))
-	var scale := int(scale_result["scale"])
-	var profile := BoardProfile.from_scale(scale)
+	var dimensions_result := _resolve_dimensions(raw)
+	if not bool(dimensions_result["valid"]):
+		errors.append(str(dimensions_result["error"]))
+	var columns := int(dimensions_result["columns"])
+	var rows := int(dimensions_result["rows"])
+	var profile := BoardProfile.from_dimensions(columns, rows)
 
 	var level: Dictionary = raw.duplicate(true)
 	level["schemaVersion"] = SUPPORTED_SCHEMA_VERSION
-	level["boardScale"] = scale
-	# Normalize board metadata so authored files always use the exact same
-	# footprint as the live RYKO playfield, even when importing an older draft.
+	level["boardColumns"] = columns
+	level["boardRows"] = rows
+	var legacy_scale := int(profile["legacy_scale"])
+	if legacy_scale > 0:
+		level["boardScale"] = legacy_scale
+	else:
+		level.erase("boardScale")
+	# Authored levels always resolve onto the exact existing RYKO playfield.
+	# main.gd / the existing hero gameplay remains untouched.
 	level["board"] = _board_json(profile)
 
 	var rules_variant: Variant = level.get("rules", {})
@@ -93,8 +100,12 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 
 	if mode == "descent" and incoming_rows.is_empty():
 		warnings.append("No authored incoming rows: only the initial board will descend.")
-	if scale >= 3:
-		warnings.append("%dx micro-grid: gameplay elements render at %.0f%% of standard size." % [scale, 100.0 / float(scale)])
+	if float(profile["visual_scale"]) <= (1.0 / 3.0):
+		warnings.append("%dx%d micro-grid: gameplay elements render at %.0f%% of standard size." % [columns, rows, 100.0 * float(profile["visual_scale"])])
+	var standard_ratio := float(BoardProfile.BASE_COLUMNS) / float(BoardProfile.BASE_ROWS)
+	var board_ratio := float(columns) / float(rows)
+	if absf((board_ratio / standard_ratio) - 1.0) > 0.2:
+		warnings.append("%dx%d is far from the standard 7x9 aspect ratio; horizontal and vertical gaps will differ noticeably." % [columns, rows])
 
 	return {
 		"valid": errors.is_empty(),
@@ -105,31 +116,45 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 	}
 
 
-static func _resolve_scale(raw: Dictionary) -> Dictionary:
+static func _resolve_dimensions(raw: Dictionary) -> Dictionary:
+	var board_variant: Variant = raw.get("board", {})
+	if typeof(board_variant) == TYPE_DICTIONARY:
+		var board: Dictionary = board_variant
+		if board.has("columns") or board.has("rows"):
+			if not board.has("columns") or not board.has("rows"):
+				return _invalid_dimensions("board.columns and board.rows must be provided together.")
+			return _validated_dimensions(int(board.get("columns", BoardProfile.BASE_COLUMNS)), int(board.get("rows", BoardProfile.BASE_ROWS)))
+
+	if raw.has("boardColumns") or raw.has("boardRows"):
+		if not raw.has("boardColumns") or not raw.has("boardRows"):
+			return _invalid_dimensions("boardColumns and boardRows must be provided together.")
+		return _validated_dimensions(int(raw.get("boardColumns", BoardProfile.BASE_COLUMNS)), int(raw.get("boardRows", BoardProfile.BASE_ROWS)))
+
 	if raw.has("boardScale"):
 		var explicit := int(raw.get("boardScale", 1))
 		if not BoardProfile.is_supported_scale(explicit):
-			return {"valid": false, "scale": 1, "error": "boardScale must be 1, 2, 3 or 4."}
-		return {"valid": true, "scale": explicit, "error": ""}
+			return _invalid_dimensions("boardScale must be 1, 2, 3 or 4 for legacy level files.")
+		return {"valid": true, "columns": BoardProfile.BASE_COLUMNS * explicit, "rows": BoardProfile.BASE_ROWS * explicit, "error": ""}
 
-	var board_variant: Variant = raw.get("board", {})
-	if typeof(board_variant) != TYPE_DICTIONARY:
-		return {"valid": true, "scale": 1, "error": ""}
-	var board: Dictionary = board_variant
-	if board.has("scale"):
-		var nested := int(board.get("scale", 1))
-		if not BoardProfile.is_supported_scale(nested):
-			return {"valid": false, "scale": 1, "error": "board.scale must be 1, 2, 3 or 4."}
-		return {"valid": true, "scale": nested, "error": ""}
+	if typeof(board_variant) == TYPE_DICTIONARY:
+		var board: Dictionary = board_variant
+		if board.has("scale"):
+			var nested := int(board.get("scale", 1))
+			if not BoardProfile.is_supported_scale(nested):
+				return _invalid_dimensions("board.scale must be 1, 2, 3 or 4 for legacy level files.")
+			return {"valid": true, "columns": BoardProfile.BASE_COLUMNS * nested, "rows": BoardProfile.BASE_ROWS * nested, "error": ""}
 
-	var columns := int(board.get("columns", BoardProfile.BASE_COLUMNS))
-	var rows := int(board.get("rows", BoardProfile.BASE_ROWS))
-	if columns % BoardProfile.BASE_COLUMNS == 0 and rows % BoardProfile.BASE_ROWS == 0:
-		var column_scale := int(columns / BoardProfile.BASE_COLUMNS)
-		var row_scale := int(rows / BoardProfile.BASE_ROWS)
-		if column_scale == row_scale and BoardProfile.is_supported_scale(column_scale):
-			return {"valid": true, "scale": column_scale, "error": ""}
-	return {"valid": true, "scale": 1, "error": ""}
+	return {"valid": true, "columns": BoardProfile.BASE_COLUMNS, "rows": BoardProfile.BASE_ROWS, "error": ""}
+
+
+static func _validated_dimensions(columns: int, rows: int) -> Dictionary:
+	if not BoardProfile.is_supported_dimensions(columns, rows):
+		return _invalid_dimensions("Board size must be %d-%d columns and %d-%d rows." % [BoardProfile.MIN_COLUMNS, BoardProfile.MAX_COLUMNS, BoardProfile.MIN_ROWS, BoardProfile.MAX_ROWS])
+	return {"valid": true, "columns": columns, "rows": rows, "error": ""}
+
+
+static func _invalid_dimensions(message: String) -> Dictionary:
+	return {"valid": false, "columns": BoardProfile.BASE_COLUMNS, "rows": BoardProfile.BASE_ROWS, "error": message}
 
 
 static func _validate_entity(raw_entity: Variant, profile: Dictionary, label: String, errors: Array[String], incoming: bool) -> bool:
@@ -171,7 +196,7 @@ static func _validate_entity(raw_entity: Variant, profile: Dictionary, label: St
 
 
 static func _board_json(profile: Dictionary) -> Dictionary:
-	return {
+	var board := {
 		"logicalWidth": 720,
 		"logicalHeight": 1280,
 		"boardLeft": float(profile["board_left"]),
@@ -180,7 +205,6 @@ static func _board_json(profile: Dictionary) -> Dictionary:
 		"gridX": float(profile["grid_x"]),
 		"gridY": float(profile["grid_y"]),
 		"launchLineY": float(profile["launch_line_y"]),
-		"scale": int(profile["scale"]),
 		"columns": int(profile["columns"]),
 		"rows": int(profile["rows"]),
 		"cell": float(profile["cell"]),
@@ -202,6 +226,9 @@ static func _board_json(profile: Dictionary) -> Dictionary:
 		"supernovaCoreRadius": float(profile["supernova_core_radius"]),
 		"supernovaExplosionRadius": float(profile["supernova_explosion_radius"]),
 	}
+	if int(profile["legacy_scale"]) > 0:
+		board["scale"] = int(profile["legacy_scale"])
+	return board
 
 
 static func _failure(message: String) -> Dictionary:
