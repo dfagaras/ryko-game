@@ -23,7 +23,142 @@ const FOOTER_CONTROL_SIZE := 108.0
 const FOOTER_CONTROL_CENTER_Y := 1175.0
 const FOOTER_SIDE_SCOPE_GAP := 116.0
 
+# Gameplay music stays deliberately below the ball/block SFX. Two players are
+# used so tracks can overlap for a smooth equal-power crossfade instead of
+# stopping and starting abruptly.
+const MUSIC_TRACKS := [
+	preload("res://assets/music/ryko_track_01.mp3"),
+	preload("res://assets/music/ryko_track_02.mp3"),
+	preload("res://assets/music/ryko_track_03.mp3"),
+	preload("res://assets/music/ryko_track_04.mp3"),
+	preload("res://assets/music/ryko_track_05.mp3"),
+	preload("res://assets/music/ryko_track_06.mp3")
+]
+const MUSIC_VOLUME_DB := -19.0
+const MUSIC_SILENT_DB := -80.0
+const MUSIC_CROSSFADE_SECONDS := 6.0
+
 var score: int = 0
+var music_players: Array[AudioStreamPlayer] = []
+var music_order: Array[int] = []
+var music_order_position := 0
+var music_active_player := 0
+var music_current_track_index := -1
+var music_next_track_index := -1
+var music_crossfade_active := false
+var music_crossfade_elapsed := 0.0
+var music_rng := RandomNumberGenerator.new()
+
+
+func _ready() -> void:
+	super._ready()
+	_setup_music_playlist()
+
+
+func _process(delta: float) -> void:
+	_update_music_playlist(delta)
+
+
+func _setup_music_playlist() -> void:
+	music_rng.randomize()
+	for index in range(2):
+		var player := AudioStreamPlayer.new()
+		player.name = "MusicPlayer%d" % (index + 1)
+		player.volume_db = MUSIC_SILENT_DB
+		add_child(player)
+		music_players.append(player)
+
+	_build_music_order(-1)
+	music_active_player = 0
+	music_current_track_index = _take_next_music_track()
+	var first_player := music_players[music_active_player]
+	first_player.stream = MUSIC_TRACKS[music_current_track_index]
+	first_player.volume_db = MUSIC_VOLUME_DB
+	first_player.play()
+
+
+func _build_music_order(previous_track: int) -> void:
+	music_order.clear()
+	for index in range(MUSIC_TRACKS.size()):
+		music_order.append(index)
+
+	# Fisher-Yates with a dedicated RNG keeps music randomization independent of
+	# the seeded gameplay row/block generator.
+	for index in range(music_order.size() - 1, 0, -1):
+		var swap_index := music_rng.randi_range(0, index)
+		var value := music_order[index]
+		music_order[index] = music_order[swap_index]
+		music_order[swap_index] = value
+
+	# A freshly shuffled cycle must never immediately repeat the track that just
+	# finished in the previous cycle.
+	if music_order.size() > 1 and previous_track >= 0 and music_order[0] == previous_track:
+		var value := music_order[0]
+		music_order[0] = music_order[1]
+		music_order[1] = value
+	music_order_position = 0
+
+
+func _take_next_music_track() -> int:
+	if music_order_position >= music_order.size():
+		_build_music_order(music_current_track_index)
+	var track_index := music_order[music_order_position]
+	music_order_position += 1
+	return track_index
+
+
+func _update_music_playlist(delta: float) -> void:
+	if music_players.size() != 2 or music_current_track_index < 0:
+		return
+
+	if music_crossfade_active:
+		music_crossfade_elapsed += delta
+		var ratio := clampf(music_crossfade_elapsed / MUSIC_CROSSFADE_SECONDS, 0.0, 1.0)
+		var base_linear := db_to_linear(MUSIC_VOLUME_DB)
+		var outgoing_gain := cos(ratio * PI * 0.5) * base_linear
+		var incoming_gain := sin(ratio * PI * 0.5) * base_linear
+		var outgoing := music_players[music_active_player]
+		var incoming_index := 1 - music_active_player
+		var incoming := music_players[incoming_index]
+		outgoing.volume_db = linear_to_db(maxf(outgoing_gain, 0.0001))
+		incoming.volume_db = linear_to_db(maxf(incoming_gain, 0.0001))
+
+		if ratio >= 1.0:
+			outgoing.stop()
+			outgoing.volume_db = MUSIC_SILENT_DB
+			music_active_player = incoming_index
+			music_current_track_index = music_next_track_index
+			music_next_track_index = -1
+			music_crossfade_active = false
+			music_crossfade_elapsed = 0.0
+			incoming.volume_db = MUSIC_VOLUME_DB
+		return
+
+	var active_player := music_players[music_active_player]
+	if active_player.stream == null:
+		return
+
+	var stream_length := active_player.stream.get_length()
+	var remaining := stream_length - active_player.get_playback_position()
+	if stream_length > MUSIC_CROSSFADE_SECONDS and remaining <= MUSIC_CROSSFADE_SECONDS:
+		_start_music_crossfade()
+	elif not active_player.playing:
+		# Defensive fallback for a stream that ends before its reported duration.
+		_start_music_crossfade()
+
+
+func _start_music_crossfade() -> void:
+	if music_crossfade_active or music_players.size() != 2:
+		return
+	music_next_track_index = _take_next_music_track()
+	var incoming_index := 1 - music_active_player
+	var incoming := music_players[incoming_index]
+	incoming.stop()
+	incoming.stream = MUSIC_TRACKS[music_next_track_index]
+	incoming.volume_db = MUSIC_SILENT_DB
+	incoming.play()
+	music_crossfade_elapsed = 0.0
+	music_crossfade_active = true
 
 
 func _update_responsive_layout() -> void:
