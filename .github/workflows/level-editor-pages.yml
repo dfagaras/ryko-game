@@ -33,6 +33,7 @@ jobs:
           set -euo pipefail
           node --check tools/level-editor/model.js
           node --check tools/level-editor/editor.js
+          node --check tools/level-editor/scale-controls.js
           node tools/level-editor/validate-editor.mjs
 
       - name: Configure GitHub Pages
@@ -48,6 +49,7 @@ jobs:
           cp tools/level-editor/styles.css "$site/styles.css"
           cp tools/level-editor/model.js "$site/model.js"
           cp tools/level-editor/editor.js "$site/editor.js"
+          cp tools/level-editor/scale-controls.js "$site/scale-controls.js"
           touch "$site/.nojekyll"
           cp assets/icons/block_black_hole.png "$site/assets/icons/"
           cp assets/icons/block_dense.png "$site/assets/icons/"
