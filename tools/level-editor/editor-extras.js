@@ -4,6 +4,7 @@
   const M = window.RykoLevelModel;
   const STORAGE_KEY = "ryko-level-editor-v1";
   const COLOR_KEY = "ryko-block-color";
+  const ACTIVE_TOOL_KEY = "ryko-active-tool";
   if (!M) return;
 
   const css = document.createElement("style");
@@ -19,14 +20,33 @@
   `;
   document.head.appendChild(css);
 
+  function assetUrl(filename) {
+    const inRepoToolPath = window.location.protocol === "file:" || window.location.pathname.includes("/tools/level-editor/");
+    return `${inRepoToolPath ? "../../assets/icons/" : "assets/icons/"}${filename}`;
+  }
+
   function loadLevel() {
     try { return M.normalizeLevel(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")); }
     catch { return M.createDefaultLevel(); }
   }
 
+  function rememberActiveTool() {
+    const tool = activeTool();
+    if (tool) sessionStorage.setItem(ACTIVE_TOOL_KEY, tool);
+  }
+
   function saveAndReload(level) {
+    rememberActiveTool();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(M.normalizeLevel(level)));
     location.reload();
+  }
+
+  function restoreActiveTool() {
+    const remembered = sessionStorage.getItem(ACTIVE_TOOL_KEY);
+    if (!remembered) return;
+    sessionStorage.removeItem(ACTIVE_TOOL_KEY);
+    const button = document.querySelector(`.tool[data-tool="${CSS.escape(remembered)}"]`);
+    if (button && !button.classList.contains("active")) button.click();
   }
 
   function activeColor() {
@@ -113,6 +133,38 @@
     });
   }
 
+  function topRowVisual(entity) {
+    const visual = document.createElement("div");
+    visual.className = `entity ${entity.kind}${entity.kind === "block" ? ` block ${entity.shape || "square"} ${entity.variant || "normal"} ${entity.orientation || ""}` : ` ${entity.type || ""}`}`;
+
+    let art = null;
+    if (entity.kind === "block") {
+      art = { dense:"block_dense.png", regenerative:"block_regenerative.png", phase:"block_phase.png", black_hole:"block_black_hole.png" }[entity.variant];
+    } else if (entity.kind === "pickup" && entity.type === "plus_ball") {
+      art = "power_plus_one.png";
+    } else if (entity.kind === "power") {
+      art = { ion:"power_ion.png", ghost:"power_ghost.png", supernova:"power_supernova.png" }[entity.type];
+    }
+
+    if (art) {
+      const image = document.createElement("img");
+      image.className = "entity-art";
+      image.src = assetUrl(art);
+      image.alt = "";
+      if (entity.kind === "power" && entity.type === "ion" && entity.orientation === "vertical") image.style.transform = "rotate(90deg)";
+      visual.appendChild(image);
+    }
+
+    if (entity.kind === "block") {
+      const hp = document.createElement("span");
+      hp.className = "hp";
+      hp.textContent = entity.hp;
+      visual.appendChild(hp);
+      decorateEntity(visual, entity);
+    }
+    return visual;
+  }
+
   function renderTopRow() {
     const boardGrid = document.getElementById("boardGrid");
     if (!boardGrid || document.getElementById("topRowGrid")) return;
@@ -130,19 +182,7 @@
       cell.dataset.column = String(column);
       cell.innerHTML = `<span class="cell-index">T.${column + 1}</span>`;
       const entity = (level.topRow || []).find((item) => item.column === column);
-      if (entity) {
-        const visual = document.createElement("div");
-        visual.className = `entity ${entity.kind}${entity.kind === "block" ? ` block ${entity.shape || "square"} ${entity.variant || "normal"} ${entity.orientation || ""}` : ` ${entity.type || ""}`}`;
-        if (entity.kind === "block") {
-          const hp = document.createElement("span"); hp.className = "hp"; hp.textContent = entity.hp; visual.appendChild(hp);
-          decorateEntity(visual, entity);
-        } else {
-          visual.textContent = entity.kind === "pickup" ? "+" : "◆";
-          visual.style.fontSize = "24px";
-          visual.style.color = "var(--aqua)";
-        }
-        cell.appendChild(visual);
-      }
+      if (entity) cell.appendChild(topRowVisual(entity));
       cell.addEventListener("click", () => {
         const tool = activeTool();
         const fresh = loadLevel();
@@ -179,6 +219,7 @@
   buildColorPanel();
   renderTopRow();
   decorateMainBoard();
+  restoreActiveTool();
   const observer = new MutationObserver(() => decorateMainBoard());
   const boardGrid = document.getElementById("boardGrid");
   if (boardGrid) observer.observe(boardGrid, { childList:true, subtree:true });
