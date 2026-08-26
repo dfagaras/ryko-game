@@ -122,4 +122,31 @@ assert.equal(legacyExport.board.scale, 2);
 assert.equal(legacyExport.ball.sizeMultiplier, 1);
 assertFixedFootprint(legacyExport.board);
 
-console.log("RYKO flexible authored board + ball size validation: PASS");
+// Browser-side model extension: preserve Ryko palette colors and the extra authored top row.
+globalThis.window = globalThis;
+const storage = new Map([["ryko-block-color", "amber"]]);
+globalThis.localStorage = {
+  getItem: (key) => storage.has(key) ? storage.get(key) : null,
+  setItem: (key, value) => storage.set(key, String(value))
+};
+require("./block-color-model.js");
+const colored = M.normalizeLevel({
+  ...M.createDefaultLevel(),
+  initialBoard: [
+    { kind: "block", shape: "square", variant: "normal", hp: 7, column: 0, row: 0, color: "aqua" },
+    { kind: "block", shape: "triangle", variant: "normal", orientation: "top_left", hp: 8, column: 1, row: 0, color: "violet" }
+  ],
+  topRow: [{ kind: "block", shape: "square", variant: "normal", hp: 9, column: 3, color: "toxic" }]
+});
+assert.equal(colored.initialBoard[0].color, "aqua");
+assert.equal(colored.initialBoard[1].color, "violet");
+assert.equal(colored.topRow.length, 1);
+assert.equal(colored.topRow[0].color, "toxic");
+assert.equal(colored.topRow[0].row, undefined);
+const coloredExport = JSON.parse(M.toExportJson(colored));
+assert.equal(coloredExport.initialBoard[0].color, "aqua");
+assert.equal(coloredExport.initialBoard[1].color, "violet");
+assert.equal(coloredExport.topRow[0].color, "toxic");
+assert.deepEqual(Object.keys(M.BLOCK_COLORS), ["amber", "aqua", "coral", "toxic", "violet", "ion_blue"]);
+
+console.log("RYKO flexible authored board + ball size + top row + block colors validation: PASS");
