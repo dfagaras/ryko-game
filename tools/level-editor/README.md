@@ -3,10 +3,14 @@
 Static browser editor for authored RYKO puzzle levels. It mirrors the current Godot gameplay board contract from `scripts/main.gd`:
 
 - logical canvas: 720 × 1280;
-- board: 7 columns × 9 playable rows;
+- board: 7 columns × 9 standard playable rows plus one authored top row in the free board space above row 1;
 - cells: 88 px with a 4 px gap (92 px row step);
 - launch / danger line: logical Y 1092;
 - blocks and powers use the same names and icon assets as the game.
+
+The top row is exported separately as `topRow` so the existing 7 × 9 gameplay coordinate contract remains unchanged while level designers can use the full visible board area.
+
+Normal squares and triangles can use the controlled RYKO palette: `amber`, `aqua`, `coral`, `toxic`, `violet`, and `ion_blue`. The selected color is stored on the block as `color` and is used by the authored-level runtime.
 
 ## Supported level modes
 
@@ -33,7 +37,8 @@ Block entity example:
   "variant": "regenerative",
   "hp": 12,
   "column": 2,
-  "row": 4
+  "row": 4,
+  "color": "aqua"
 }
 ```
 
@@ -47,7 +52,25 @@ Triangle example:
   "orientation": "top_right",
   "hp": 8,
   "column": 5,
-  "row": 1
+  "row": 1,
+  "color": "violet"
+}
+```
+
+Top-row example:
+
+```json
+{
+  "topRow": [
+    {
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 10,
+      "column": 3,
+      "color": "toxic"
+    }
+  ]
 }
 ```
 
@@ -61,7 +84,9 @@ Run from this directory:
 
 ```bash
 node --check model.js
+node --check block-color-model.js
 node --check editor.js
+node --check editor-extras.js
 node validate-editor.mjs
 ```
 
