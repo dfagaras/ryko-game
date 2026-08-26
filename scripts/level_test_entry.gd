@@ -117,6 +117,15 @@ func _has_block_at(column: int, row: int) -> bool:
 	return false
 
 
+func _spawn_position(column: int, row: int) -> Vector2:
+	if authored_mode and row < 0:
+		# Keep topRow exactly one authored row-step above row 0, matching the editor.
+		# This removes the legacy fixed BOARD_TOP gap that became exaggerated on
+		# dense boards such as 14x18 and 28x36.
+		return _cell_center(column, row)
+	return super._spawn_position(column, row)
+
+
 func _spawn_authored_entity(entity: Dictionary, row: int) -> void:
 	_pending_block_color = str(entity.get("color", "amber"))
 	if not BLOCK_COLOR_PALETTE.has(_pending_block_color):
