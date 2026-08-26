@@ -14,6 +14,14 @@ const BLOCK_COLOR_PALETTE := {
 	"violet": Color("9477b5"),
 	"ion_blue": Color("55bfe3"),
 }
+const PIXEL_COLOR_NAMES := {
+	"M": "amber",
+	"A": "aqua",
+	"C": "coral",
+	"T": "toxic",
+	"V": "violet",
+	"I": "ion_blue",
+}
 var _pending_block_color := "amber"
 
 
@@ -47,19 +55,61 @@ func _apply_background_music_state() -> void:
 
 
 func _load_authored_level(path: String) -> void:
+	var pixel_rows := _read_pixel_rows(path)
 	super._load_authored_level(path)
 	if not authored_mode:
 		return
+
 	var top_row_variant: Variant = authored_level.get("topRow", [])
-	if typeof(top_row_variant) != TYPE_ARRAY:
-		return
-	for entity_variant in top_row_variant as Array:
-		if typeof(entity_variant) != TYPE_DICTIONARY:
-			continue
-		var entity := (entity_variant as Dictionary).duplicate(true)
-		entity["row"] = -1
-		_spawn_authored_entity(entity, -1)
+	if typeof(top_row_variant) == TYPE_ARRAY:
+		for entity_variant in top_row_variant as Array:
+			if typeof(entity_variant) != TYPE_DICTIONARY:
+				continue
+			var entity := (entity_variant as Dictionary).duplicate(true)
+			entity["row"] = -1
+			_spawn_authored_entity(entity, -1)
+
+	_spawn_pixel_rows(pixel_rows)
 	queue_redraw()
+
+
+func _read_pixel_rows(path: String) -> Array[String]:
+	var result: Array[String] = []
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return result
+	var json := JSON.new()
+	if json.parse(file.get_as_text()) != OK or typeof(json.data) != TYPE_DICTIONARY:
+		return result
+	var raw: Dictionary = json.data
+	var rows_variant: Variant = raw.get("pixelRows", [])
+	if typeof(rows_variant) != TYPE_ARRAY:
+		return result
+	for row_variant in rows_variant as Array:
+		result.append(String(row_variant))
+	return result
+
+
+func _spawn_pixel_rows(pixel_rows: Array[String]) -> void:
+	if pixel_rows.is_empty():
+		return
+	var row_limit := mini(pixel_rows.size(), int(authored_profile.get("rows", 9)))
+	var column_limit := int(authored_profile.get("columns", 7))
+	for row in range(row_limit):
+		var row_text := pixel_rows[row]
+		for column in range(mini(row_text.length(), column_limit)):
+			var symbol := row_text.substr(column, 1)
+			if not PIXEL_COLOR_NAMES.has(symbol):
+				continue
+			_spawn_authored_entity({
+				"column": column,
+				"row": row,
+				"kind": "block",
+				"shape": "square",
+				"variant": "normal",
+				"hp": 50,
+				"color": PIXEL_COLOR_NAMES[symbol],
+			}, row)
 
 
 func _spawn_authored_entity(entity: Dictionary, row: int) -> void:
