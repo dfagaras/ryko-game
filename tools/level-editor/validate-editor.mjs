@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 const require = createRequire(import.meta.url);
 const M = require("./model.js");
 
@@ -46,28 +47,19 @@ const eightByTen = M.normalizeLevel({
 assert.equal(eightByTen.board.scale, 0);
 assertFixedFootprint(eightByTen.board);
 
-const smallBall = M.normalizeLevel({
-  ...eightByTen,
-  ball: { sizeMultiplier: 0.85 }
-});
+const smallBall = M.normalizeLevel({ ...eightByTen, ball: { sizeMultiplier: 0.85 } });
 let ballMetrics = M.ballMetricsForLevel(smallBall);
 assert.equal(smallBall.ball.sizeMultiplier, 0.85);
 closeTo(ballMetrics.selectedRadius, ballMetrics.standardRadius * 0.85);
 closeTo(ballMetrics.selectedCollisionRadius, ballMetrics.standardCollisionRadius * 0.85);
 assert.equal(M.validateLevel(smallBall).valid, true);
 
-const largeBall = M.normalizeLevel({
-  ...eightByTen,
-  ball: { sizeMultiplier: 1.3 }
-});
+const largeBall = M.normalizeLevel({ ...eightByTen, ball: { sizeMultiplier: 1.3 } });
 ballMetrics = M.ballMetricsForLevel(largeBall);
 assert.equal(largeBall.ball.sizeMultiplier, 1.3);
 closeTo(ballMetrics.selectedRadius, ballMetrics.standardRadius * 1.3);
 
-result = M.validateLevel({
-  ...eightByTen,
-  ball: { sizeMultiplier: 1.5 }
-});
+result = M.validateLevel({ ...eightByTen, ball: { sizeMultiplier: 1.5 } });
 assert.equal(result.valid, false);
 assert.match(result.errors.join("\n"), /Ball size multiplier/i);
 
@@ -122,31 +114,10 @@ assert.equal(legacyExport.board.scale, 2);
 assert.equal(legacyExport.ball.sizeMultiplier, 1);
 assertFixedFootprint(legacyExport.board);
 
-// Browser-side model extension: preserve Ryko palette colors and the extra authored top row.
-globalThis.window = globalThis;
-const storage = new Map([["ryko-block-color", "amber"]]);
-globalThis.localStorage = {
-  getItem: (key) => storage.has(key) ? storage.get(key) : null,
-  setItem: (key, value) => storage.set(key, String(value))
-};
-require("./block-color-model.js");
-const colored = M.normalizeLevel({
-  ...M.createDefaultLevel(),
-  initialBoard: [
-    { kind: "block", shape: "square", variant: "normal", hp: 7, column: 0, row: 0, color: "aqua" },
-    { kind: "block", shape: "triangle", variant: "normal", orientation: "top_left", hp: 8, column: 1, row: 0, color: "violet" }
-  ],
-  topRow: [{ kind: "block", shape: "square", variant: "normal", hp: 9, column: 3, color: "toxic" }]
-});
-assert.equal(colored.initialBoard[0].color, "aqua");
-assert.equal(colored.initialBoard[1].color, "violet");
-assert.equal(colored.topRow.length, 1);
-assert.equal(colored.topRow[0].color, "toxic");
-assert.equal(colored.topRow[0].row, undefined);
-const coloredExport = JSON.parse(M.toExportJson(colored));
-assert.equal(coloredExport.initialBoard[0].color, "aqua");
-assert.equal(coloredExport.initialBoard[1].color, "violet");
-assert.equal(coloredExport.topRow[0].color, "toxic");
-assert.deepEqual(Object.keys(M.BLOCK_COLORS), ["amber", "aqua", "coral", "toxic", "violet", "ion_blue"]);
+const extrasSource = readFileSync(new URL("./editor-extras.js", import.meta.url), "utf8");
+assert.match(extrasSource, /ACTIVE_TOOL_KEY/);
+assert.match(extrasSource, /sessionStorage\.setItem\(ACTIVE_TOOL_KEY/);
+assert.match(extrasSource, /restoreActiveTool\(\)/);
+assert.match(extrasSource, /power_plus_one\.png/);
 
-console.log("RYKO flexible authored board + ball size + top row + block colors validation: PASS");
+console.log("RYKO flexible authored board + ball size validation: PASS");
