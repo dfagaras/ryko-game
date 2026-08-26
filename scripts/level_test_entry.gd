@@ -1,6 +1,7 @@
 extends "res://scripts/level_test_game.gd"
 
 const RUNTIME_LEVEL_KEY := "ryko/runtime_test_level_path"
+const BACKGROUND_MUSIC_KEY := "ryko/background_music_enabled"
 const BLOCK_COLOR_PALETTE := {
 	"amber": Color("e7ae43"),
 	"aqua": Color("55b8b1"),
@@ -14,10 +15,18 @@ var _pending_block_color := "amber"
 
 func _ready() -> void:
 	super._ready()
+	_apply_background_music_state()
 	var path := str(ProjectSettings.get_setting(RUNTIME_LEVEL_KEY, ""))
 	if path.is_empty():
 		return
 	call_deferred("_load_authored_level", path)
+
+
+func _apply_background_music_state() -> void:
+	var enabled := bool(ProjectSettings.get_setting(BACKGROUND_MUSIC_KEY, true))
+	for player in music_players:
+		if is_instance_valid(player):
+			player.stream_paused = not enabled
 
 
 func _load_authored_level(path: String) -> void:
