@@ -10,7 +10,6 @@ on:
       - ".github/workflows/level-editor-pages.yml"
   workflow_dispatch:
 
-# Repository Settings > Pages must use GitHub Actions as the publishing source.
 permissions:
   contents: read
   pages: write
@@ -33,9 +32,11 @@ jobs:
           set -euo pipefail
           node --check tools/level-editor/model.js
           node --check tools/level-editor/ball-range-extension.js
+          node --check tools/level-editor/block-color-model.js
           node --check tools/level-editor/editor.js
           node --check tools/level-editor/scale-controls.js
           node --check tools/level-editor/ball-range-ui.js
+          node --check tools/level-editor/editor-extras.js
           node tools/level-editor/validate-editor.mjs
 
       - name: Configure GitHub Pages
@@ -51,9 +52,11 @@ jobs:
           cp tools/level-editor/styles.css "$site/styles.css"
           cp tools/level-editor/model.js "$site/model.js"
           cp tools/level-editor/ball-range-extension.js "$site/ball-range-extension.js"
+          cp tools/level-editor/block-color-model.js "$site/block-color-model.js"
           cp tools/level-editor/editor.js "$site/editor.js"
           cp tools/level-editor/scale-controls.js "$site/scale-controls.js"
           cp tools/level-editor/ball-range-ui.js "$site/ball-range-ui.js"
+          cp tools/level-editor/editor-extras.js "$site/editor-extras.js"
           touch "$site/.nojekyll"
           cp assets/icons/block_black_hole.png "$site/assets/icons/"
           cp assets/icons/block_dense.png "$site/assets/icons/"
@@ -65,8 +68,12 @@ jobs:
           cp assets/icons/power_supernova.png "$site/assets/icons/"
           test -s "$site/ball-range-extension.js"
           test -s "$site/ball-range-ui.js"
+          test -s "$site/block-color-model.js"
+          test -s "$site/editor-extras.js"
           grep -q 'ball-range-extension.js' "$site/index.html"
           grep -q 'ball-range-ui.js' "$site/index.html"
+          grep -q 'block-color-model.js' "$site/index.html"
+          grep -q 'editor-extras.js' "$site/index.html"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

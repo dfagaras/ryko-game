@@ -25,9 +25,11 @@ jobs:
           set -euo pipefail
           node --check tools/level-editor/model.js
           node --check tools/level-editor/ball-range-extension.js
+          node --check tools/level-editor/block-color-model.js
           node --check tools/level-editor/editor.js
           node --check tools/level-editor/scale-controls.js
           node --check tools/level-editor/ball-range-ui.js
+          node --check tools/level-editor/editor-extras.js
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
 

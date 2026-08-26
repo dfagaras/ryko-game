@@ -66,7 +66,7 @@
       <div class="board-card">
         <div class="board-card-header">
           <div>
-            <div class="eyebrow">7 columns × 9 playable rows</div>
+            <div class="eyebrow">7 columns × 9 playable rows + top row</div>
             <h2 id="boardTitle">Initial board</h2>
           </div>
           <div class="board-actions">
@@ -114,7 +114,7 @@
         <div><dt>Board</dt><dd>720×1280 logical canvas</dd></div>
         <div><dt>Cells</dt><dd>88 px + 4 px gap</dd></div>
         <div><dt>Columns</dt><dd>7</dd></div>
-        <div><dt>Playable rows</dt><dd>9</dd></div>
+        <div><dt>Playable rows</dt><dd>9 + top row</dd></div>
         <div><dt>Win</dt><dd>Clear all authored content</dd></div>
         <div id="loseContract"><dt>Lose</dt><dd>Exceed move limit</dd></div>
       </dl>
@@ -130,8 +130,10 @@
 
   <script src="model.js"></script>
   <script src="ball-range-extension.js"></script>
+  <script src="block-color-model.js"></script>
   <script src="editor.js"></script>
   <script src="scale-controls.js"></script>
   <script src="ball-range-ui.js"></script>
+  <script src="editor-extras.js"></script>
 </body>
 </html>
