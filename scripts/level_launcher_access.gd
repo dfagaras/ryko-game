@@ -3,6 +3,7 @@ extends Node2D
 const LEVELS_DIR := "res://levels"
 const TEST_SCENE := "res://scenes/level_test.tscn"
 const RUNTIME_LEVEL_KEY := "ryko/runtime_test_level_path"
+const BACKGROUND_MUSIC_KEY := "ryko/background_music_enabled"
 const W := 720.0
 
 const PANEL := Color("#0c2025")
@@ -10,9 +11,14 @@ const PLAYFIELD_BG := Color("#10262b")
 const CREAM := Color("#f2e3bb")
 const AQUA := Color("#55b8b1")
 const CORAL := Color("#e96b5f")
+const AMBER := Color("#e7ae43")
 const MUTED := Color("#6e8584")
 
-const LEVELS_BUTTON_RECT := Rect2(145.0, 665.0, 430.0, 52.0)
+# Keep the extra Settings controls in the free space between BALL SOUNDS and BACK.
+# They are intentionally compact so the established Settings panel does not need
+# to be resized and the existing Infinity menu remains untouched.
+const MUSIC_BUTTON_RECT := Rect2(145.0, 688.0, 205.0, 36.0)
+const LEVELS_BUTTON_RECT := Rect2(370.0, 688.0, 205.0, 36.0)
 const LEVELS_PANEL_RECT := Rect2(80.0, 300.0, 560.0, 650.0)
 const LEVELS_BACK_RECT := Rect2(235.0, 855.0, 250.0, 64.0)
 const LEVEL_OPTION_HEIGHT := 58.0
@@ -27,6 +33,7 @@ func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
 	_refresh_catalog()
 	set_process(true)
+	call_deferred("_apply_background_music_state")
 
 
 func _process(_delta: float) -> void:
@@ -50,6 +57,7 @@ func _draw() -> void:
 	if overlay_open:
 		_draw_levels_overlay()
 	else:
+		_draw_action_button(MUSIC_BUTTON_RECT, "MUSIC %s" % ("ON" if _background_music_enabled() else "OFF"), AMBER)
 		_draw_action_button(LEVELS_BUTTON_RECT, "LEVELS", CORAL)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -72,6 +80,11 @@ func _input(event: InputEvent) -> void:
 
 	var pointer := screen_position - Vector2(float(game.get("layout_content_x")), float(game.get("layout_menu_y_offset")))
 	if not overlay_open:
+		if MUSIC_BUTTON_RECT.has_point(pointer):
+			_toggle_background_music()
+			get_viewport().set_input_as_handled()
+			queue_redraw()
+			return
 		if LEVELS_BUTTON_RECT.has_point(pointer):
 			overlay_open = true
 			_refresh_catalog()
@@ -92,6 +105,28 @@ func _input(event: InputEvent) -> void:
 
 	# While the launcher is open, don't let the Settings page underneath react.
 	get_viewport().set_input_as_handled()
+
+
+func _background_music_enabled() -> bool:
+	return bool(ProjectSettings.get_setting(BACKGROUND_MUSIC_KEY, true))
+
+
+func _toggle_background_music() -> void:
+	ProjectSettings.set_setting(BACKGROUND_MUSIC_KEY, not _background_music_enabled())
+	_apply_background_music_state()
+
+
+func _apply_background_music_state() -> void:
+	var game := get_parent()
+	if game == null:
+		return
+	var players_variant: Variant = game.get("music_players")
+	if typeof(players_variant) != TYPE_ARRAY:
+		return
+	var enabled := _background_music_enabled()
+	for player_variant in players_variant:
+		if player_variant is AudioStreamPlayer:
+			(player_variant as AudioStreamPlayer).stream_paused = not enabled
 
 
 func _refresh_catalog() -> void:
