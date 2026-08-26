@@ -40,7 +40,7 @@ var level_files: Array[String] = []
 var level_page := 0
 var import_status := ""
 var fallback_font: Font
-var import_dialog: FileDialog
+var import_pending := false
 
 
 func _ready() -> void:
@@ -275,53 +275,72 @@ func _draw_levels_overlay() -> void:
 
 
 func _open_import_dialog() -> void:
-	if is_instance_valid(import_dialog):
+	if import_pending:
 		return
-	import_status = "SELECT JSON..."
+	import_pending = true
+	import_status = "SELECT FILE..."
 	queue_redraw()
-	# Opening on a deferred frame avoids handing the same Android touch event
-	# that pressed IMPORT JSON to the system picker as an immediate cancel.
 	call_deferred("_show_import_dialog")
 
 
 func _show_import_dialog() -> void:
-	if is_instance_valid(import_dialog):
+	if not import_pending:
 		return
-	var dialog := FileDialog.new()
-	import_dialog = dialog
-	dialog.access = FileDialog.ACCESS_FILESYSTEM
-	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	# Android's native picker uses Storage Access Framework and returns a
-	# content:// URI. FileAccess can read that URI directly in Godot 4.4.
-	dialog.filters = PackedStringArray(["*.json;JSON Level;application/json,text/json"])
-	dialog.use_native_dialog = true
-	dialog.file_selected.connect(_on_import_file_selected)
-	dialog.file_selected.connect(func(_path: String) -> void:
-		_close_import_dialog()
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		import_pending = false
+		import_status = "PICKER UNAVAILABLE"
+		queue_redraw()
+		return
+
+	# Use DisplayServer directly on Android. Godot 4.4 has a known Android bug
+	# where FileDialog's native file_selected signal can fail even though the SAF
+	# picker itself works. We deliberately accept all MIME types here because
+	# browser-downloaded .json files are often tagged as text/plain or
+	# application/octet-stream by Android providers; the Ryko parser validates
+	# the actual contents after selection.
+	var filters := PackedStringArray(["*.*;All files;*/*"])
+	var error := DisplayServer.file_dialog_show(
+		"Import Ryko Level",
+		"",
+		"",
+		false,
+		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
+		filters,
+		Callable(self, "_on_native_import_dialog_result")
 	)
-	dialog.canceled.connect(func() -> void:
+	if error != OK:
+		import_pending = false
+		import_status = "PICKER ERROR %d" % int(error)
+		push_error("RYKO native import picker failed to open: %d" % int(error))
+		queue_redraw()
+
+
+func _on_native_import_dialog_result(status: bool, selected_paths: PackedStringArray, _selected_filter_index: int) -> void:
+	import_pending = false
+	if not status:
 		import_status = "IMPORT CANCELED"
 		queue_redraw()
-		_close_import_dialog()
-	)
-	add_child(dialog)
-	dialog.popup_centered_clamped(Vector2i(640, 560), 0.9)
-
-
-func _close_import_dialog() -> void:
-	if not is_instance_valid(import_dialog):
-		import_dialog = null
 		return
-	var dialog := import_dialog
-	import_dialog = null
-	dialog.queue_free()
+	if selected_paths.is_empty():
+		import_status = "NO FILE SELECTED"
+		queue_redraw()
+		return
+
+	var source_path := selected_paths[0]
+	# SAF returns content:// URIs on Android. Keep the grant when the runtime
+	# exposes the helper; immediate import still works without persistable access.
+	if OS.get_name() == "Android" and source_path.begins_with("content://"):
+		var android_runtime := Engine.get_singleton("AndroidRuntime")
+		if android_runtime != null and android_runtime.has_method("updatePersistableUriPermission"):
+			android_runtime.updatePersistableUriPermission(source_path, true)
+	_on_import_file_selected(source_path)
 
 
 func _on_import_file_selected(source_path: String) -> void:
 	var source := FileAccess.open(source_path, FileAccess.READ)
 	if source == null:
 		import_status = "CANNOT READ FILE"
-		push_error("RYKO import could not read %s" % source_path)
+		push_error("RYKO import could not read %s (error %d)" % [source_path, int(FileAccess.get_open_error())])
 		queue_redraw()
 		return
 	var raw_text := source.get_as_text()
