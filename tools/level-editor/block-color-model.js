@@ -26,11 +26,6 @@
     return COLORS[value] ? value : selectedColor();
   }
 
-  function colorizeEntity(entity) {
-    if (!entity || entity.kind !== "block") return entity;
-    return { ...entity, color: normalizeColor(entity.color) };
-  }
-
   function copyColors(source, target) {
     const sourceInitial = Array.isArray(source?.initialBoard) ? source.initialBoard : [];
     for (const targetEntity of target.initialBoard || []) {
@@ -46,10 +41,13 @@
         targetEntity.color = normalizeColor(original?.color);
       }
     });
-    target.topRow = (Array.isArray(source?.topRow) ? source.topRow : []).map((entity) => colorizeEntity(M.normalizeEntity({ ...entity, row: 0 }, 0))).filter(Boolean).map((entity) => {
-      delete entity.row;
-      return entity;
-    });
+    target.topRow = (Array.isArray(source?.topRow) ? source.topRow : []).map((raw) => {
+      const normalized = M.normalizeEntity({ ...raw, row: 0 }, 0);
+      if (!normalized) return null;
+      if (normalized.kind === "block") normalized.color = normalizeColor(raw?.color);
+      delete normalized.row;
+      return normalized;
+    }).filter(Boolean);
     return target;
   }
 
