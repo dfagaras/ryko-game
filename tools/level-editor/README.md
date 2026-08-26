@@ -12,6 +12,8 @@ The top row is exported separately as `topRow` so the existing 7 × 9 gameplay c
 
 Normal squares and triangles can use the controlled RYKO palette: `amber`, `aqua`, `coral`, `toxic`, `violet`, and `ion_blue`. The selected color is stored on the block as `color` and is used by the authored-level runtime.
 
+Editor placement tools persist across top-row edits and block recoloring, so repeated placement does not fall back to Select after each change.
+
 ## Supported level modes
 
 ### `clear_limited`
