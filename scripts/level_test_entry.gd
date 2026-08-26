@@ -3,7 +3,7 @@ extends "res://scripts/level_test_game.gd"
 const RUNTIME_LEVEL_KEY := "ryko/runtime_test_level_path"
 # Music preference is process-wide and must survive the switch from Infinity to an authored level scene.
 const BACKGROUND_MUSIC_KEY := "ryko/background_music_enabled"
-const MUSIC_VOLUME_META := "ryko_music_volume_before_mute"
+const MUSIC_BUS_NAME := "RYKO_MUSIC"
 const BLOCK_COLOR_PALETTE := {
 	"amber": Color("e7ae43"),
 	"aqua": Color("55b8b1"),
@@ -33,23 +33,23 @@ func _ready() -> void:
 	call_deferred("_load_authored_level", path)
 
 
+func _ensure_music_bus() -> int:
+	var bus_index := AudioServer.get_bus_index(MUSIC_BUS_NAME)
+	if bus_index >= 0:
+		return bus_index
+	AudioServer.add_bus()
+	bus_index = AudioServer.bus_count - 1
+	AudioServer.set_bus_name(bus_index, MUSIC_BUS_NAME)
+	return bus_index
+
+
 func _apply_background_music_state() -> void:
+	var bus_index := _ensure_music_bus()
 	var enabled := bool(ProjectSettings.get_setting(BACKGROUND_MUSIC_KEY, true))
 	for player in music_players:
-		if not is_instance_valid(player):
-			continue
-		if enabled:
-			player.stream_paused = false
-			if player.has_meta(MUSIC_VOLUME_META):
-				player.volume_db = float(player.get_meta(MUSIC_VOLUME_META))
-				player.remove_meta(MUSIC_VOLUME_META)
-			elif player.volume_db <= MUSIC_SILENT_DB + 0.1:
-				player.volume_db = MUSIC_VOLUME_DB
-		else:
-			if not player.has_meta(MUSIC_VOLUME_META):
-				player.set_meta(MUSIC_VOLUME_META, player.volume_db)
-			player.volume_db = MUSIC_SILENT_DB
-			player.stream_paused = true
+		if is_instance_valid(player):
+			player.bus = MUSIC_BUS_NAME
+	AudioServer.set_bus_mute(bus_index, not enabled)
 
 
 func _load_authored_level(path: String) -> void:
