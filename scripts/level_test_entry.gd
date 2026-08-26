@@ -99,7 +99,7 @@ func _spawn_pixel_rows(pixel_rows: Array[String]) -> void:
 		var row_text := pixel_rows[row]
 		for column in range(mini(row_text.length(), column_limit)):
 			var symbol := row_text.substr(column, 1)
-			if not PIXEL_COLOR_NAMES.has(symbol):
+			if not PIXEL_COLOR_NAMES.has(symbol) or _has_block_at(column, row):
 				continue
 			_spawn_authored_entity({
 				"column": column,
@@ -110,6 +110,13 @@ func _spawn_pixel_rows(pixel_rows: Array[String]) -> void:
 				"hp": 50,
 				"color": PIXEL_COLOR_NAMES[symbol],
 			}, row)
+
+
+func _has_block_at(column: int, row: int) -> bool:
+	for item in blocks:
+		if int(item.get("column", -1)) == column and int(item.get("row", -1)) == row:
+			return true
+	return false
 
 
 func _spawn_authored_entity(entity: Dictionary, row: int) -> void:
