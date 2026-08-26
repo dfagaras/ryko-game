@@ -1,6 +1,9 @@
 extends Node2D
 
+const LevelDefinition = preload("res://scripts/level_definition.gd")
+
 const LEVELS_DIR := "res://levels"
+const USER_LEVELS_DIR := "user://levels"
 const TEST_SCENE := "res://scenes/level_test.tscn"
 const RUNTIME_LEVEL_KEY := "ryko/runtime_test_level_path"
 const BACKGROUND_MUSIC_KEY := "ryko/background_music_enabled"
@@ -22,21 +25,26 @@ const MUSIC_BUTTON_RECT := Rect2(145.0, 688.0, 205.0, 36.0)
 const LEVELS_BUTTON_RECT := Rect2(370.0, 688.0, 205.0, 36.0)
 const LEVELS_PANEL_RECT := Rect2(80.0, 300.0, 560.0, 650.0)
 const LEVELS_BACK_RECT := Rect2(235.0, 855.0, 250.0, 64.0)
-const LEVEL_OPTION_HEIGHT := 58.0
-const LEVEL_OPTION_GAP := 10.0
+const LEVEL_OPTION_HEIGHT := 50.0
+const LEVEL_OPTION_GAP := 8.0
 const LEVELS_PER_PAGE := 5
-const LEVELS_PREV_RECT := Rect2(125.0, 775.0, 150.0, 52.0)
-const LEVELS_PAGE_RECT := Rect2(285.0, 775.0, 150.0, 52.0)
-const LEVELS_NEXT_RECT := Rect2(445.0, 775.0, 150.0, 52.0)
+const LEVELS_IMPORT_RECT := Rect2(185.0, 710.0, 350.0, 46.0)
+const LEVELS_PREV_RECT := Rect2(125.0, 790.0, 150.0, 44.0)
+const LEVELS_PAGE_RECT := Rect2(285.0, 790.0, 150.0, 44.0)
+const LEVELS_NEXT_RECT := Rect2(445.0, 790.0, 150.0, 44.0)
 
 var overlay_open := false
+# Full paths are kept here. Local user:// files override bundled res:// files
+# with the same filename so testers can replace a level without rebuilding APK.
 var level_files: Array[String] = []
 var level_page := 0
+var import_status := ""
 var fallback_font: Font
 
 
 func _ready() -> void:
 	fallback_font = ThemeDB.fallback_font
+	_ensure_user_levels_dir()
 	_refresh_catalog()
 	set_process(true)
 	call_deferred("_apply_background_music_state")
@@ -94,6 +102,7 @@ func _input(event: InputEvent) -> void:
 		if LEVELS_BUTTON_RECT.has_point(pointer):
 			overlay_open = true
 			level_page = 0
+			import_status = ""
 			_refresh_catalog()
 			get_viewport().set_input_as_handled()
 			queue_redraw()
@@ -106,6 +115,11 @@ func _input(event: InputEvent) -> void:
 			_launch_level(level_files[page_start + slot])
 			get_viewport().set_input_as_handled()
 			return
+
+	if LEVELS_IMPORT_RECT.has_point(pointer):
+		_open_import_dialog()
+		get_viewport().set_input_as_handled()
+		return
 
 	if _page_count() > 1:
 		if LEVELS_PREV_RECT.has_point(pointer) and level_page > 0:
@@ -172,15 +186,34 @@ func _apply_background_music_state() -> void:
 	AudioServer.set_bus_mute(bus_index, not enabled)
 
 
+func _ensure_user_levels_dir() -> void:
+	var absolute_path := ProjectSettings.globalize_path(USER_LEVELS_DIR)
+	if not DirAccess.dir_exists_absolute(absolute_path):
+		var error := DirAccess.make_dir_recursive_absolute(absolute_path)
+		if error != OK:
+			push_error("RYKO could not create local levels directory: %s" % absolute_path)
+
+
 func _refresh_catalog() -> void:
 	level_files.clear()
-	if not DirAccess.dir_exists_absolute(LEVELS_DIR):
-		level_page = 0
-		return
-	for filename in DirAccess.get_files_at(LEVELS_DIR):
-		if filename.to_lower().ends_with(".json"):
-			level_files.append(filename)
-	level_files.sort()
+	var merged_by_filename: Dictionary = {}
+
+	if DirAccess.dir_exists_absolute(LEVELS_DIR):
+		for filename in DirAccess.get_files_at(LEVELS_DIR):
+			if filename.to_lower().ends_with(".json"):
+				merged_by_filename[filename] = LEVELS_DIR.path_join(filename)
+
+	_ensure_user_levels_dir()
+	if DirAccess.dir_exists_absolute(USER_LEVELS_DIR):
+		for filename in DirAccess.get_files_at(USER_LEVELS_DIR):
+			if filename.to_lower().ends_with(".json"):
+				# Local copy wins over bundled copy with the same level filename.
+				merged_by_filename[filename] = USER_LEVELS_DIR.path_join(filename)
+
+	var filenames: Array = merged_by_filename.keys()
+	filenames.sort()
+	for filename_variant in filenames:
+		level_files.append(String(merged_by_filename[filename_variant]))
 	level_page = clampi(level_page, 0, maxi(0, _page_count() - 1))
 
 
@@ -190,8 +223,7 @@ func _page_count() -> int:
 	return int(ceili(float(level_files.size()) / float(LEVELS_PER_PAGE)))
 
 
-func _launch_level(filename: String) -> void:
-	var path := LEVELS_DIR.path_join(filename)
+func _launch_level(path: String) -> void:
 	ProjectSettings.set_setting(RUNTIME_LEVEL_KEY, path)
 	var error := get_tree().change_scene_to_file(TEST_SCENE)
 	if error != OK:
@@ -199,7 +231,11 @@ func _launch_level(filename: String) -> void:
 
 
 func _level_option_rect(index: int) -> Rect2:
-	return Rect2(125.0, 420.0 + float(index) * (LEVEL_OPTION_HEIGHT + LEVEL_OPTION_GAP), 470.0, LEVEL_OPTION_HEIGHT)
+	return Rect2(125.0, 410.0 + float(index) * (LEVEL_OPTION_HEIGHT + LEVEL_OPTION_GAP), 470.0, LEVEL_OPTION_HEIGHT)
+
+
+func _level_display_name(path: String) -> String:
+	return path.get_file().trim_suffix(".json").replace("_", " ").to_upper()
 
 
 func _draw_levels_overlay() -> void:
@@ -207,20 +243,27 @@ func _draw_levels_overlay() -> void:
 	draw_rect(LEVELS_PANEL_RECT, Color(CREAM, 0.82), false, 3.0, true)
 	draw_rect(LEVELS_PANEL_RECT.grow(-8.0), Color(AQUA, 0.24), false, 1.0, true)
 	_draw_centered("LEVELS", Vector2(W * 0.5, 345.0), 27, CREAM)
-	_draw_centered("TEST LAUNCHER // JSON", Vector2(W * 0.5, 380.0), 12, Color(AQUA, 0.82))
+	_draw_centered("BUILT-IN + LOCAL JSON", Vector2(W * 0.5, 380.0), 12, Color(AQUA, 0.82))
 
 	if level_files.is_empty():
-		_draw_centered("NO JSON LEVELS IN /levels YET", Vector2(W * 0.5, 510.0), 14, Color(CREAM, 0.68))
-		_draw_centered("ADD A LEVEL JSON AND IT WILL APPEAR HERE", Vector2(W * 0.5, 545.0), 10, Color(MUTED, 0.88))
+		_draw_centered("NO JSON LEVELS YET", Vector2(W * 0.5, 510.0), 14, Color(CREAM, 0.68))
+		_draw_centered("IMPORT A LEVEL JSON FROM YOUR PHONE", Vector2(W * 0.5, 545.0), 10, Color(MUTED, 0.88))
 	else:
 		var page_start := level_page * LEVELS_PER_PAGE
 		var page_count := mini(LEVELS_PER_PAGE, maxi(0, level_files.size() - page_start))
 		for slot in range(page_count):
 			var rect := _level_option_rect(slot)
-			var filename := level_files[page_start + slot]
+			var path := level_files[page_start + slot]
+			var local_level := path.begins_with("user://")
 			draw_rect(rect, Color(PLAYFIELD_BG, 0.98), true)
-			draw_rect(rect, Color(CREAM, 0.34), false, 1.5, true)
-			_draw_centered(filename.trim_suffix(".json").replace("_", " ").to_upper(), rect.get_center(), 14, CREAM)
+			draw_rect(rect, AQUA if local_level else Color(CREAM, 0.34), false, 2.5 if local_level else 1.5, true)
+			_draw_centered(_level_display_name(path), rect.get_center(), 14, CREAM)
+			if local_level:
+				_draw_centered("LOCAL", Vector2(rect.end.x - 42.0, rect.get_center().y), 8, AQUA)
+
+	_draw_action_button(LEVELS_IMPORT_RECT, "IMPORT JSON", CORAL)
+	if not import_status.is_empty():
+		_draw_centered(import_status, Vector2(W * 0.5, 772.0), 10, AQUA)
 
 	if _page_count() > 1:
 		_draw_action_button(LEVELS_PREV_RECT, "PREV", AQUA if level_page > 0 else MUTED)
@@ -228,6 +271,109 @@ func _draw_levels_overlay() -> void:
 		_draw_action_button(LEVELS_NEXT_RECT, "NEXT", AQUA if level_page < _page_count() - 1 else MUTED)
 
 	_draw_action_button(LEVELS_BACK_RECT, "BACK", AQUA)
+
+
+func _open_import_dialog() -> void:
+	import_status = "SELECT JSON..."
+	queue_redraw()
+	var filters := PackedStringArray(["*.json;JSON Level;application/json"])
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		var error := DisplayServer.file_dialog_show(
+			"Import Ryko Level",
+			"",
+			"",
+			false,
+			DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
+			filters,
+			Callable(self, "_on_native_import_dialog_result")
+		)
+		if error == OK:
+			return
+	_open_fallback_file_dialog()
+
+
+func _open_fallback_file_dialog() -> void:
+	var dialog := FileDialog.new()
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dialog.filters = PackedStringArray(["*.json ; JSON Level"])
+	dialog.use_native_dialog = true
+	dialog.file_selected.connect(_on_import_file_selected)
+	dialog.canceled.connect(func() -> void:
+		import_status = "IMPORT CANCELED"
+		queue_redraw()
+		dialog.queue_free()
+	)
+	dialog.file_selected.connect(func(_path: String) -> void:
+		dialog.queue_free()
+	)
+	add_child(dialog)
+	dialog.popup_centered_clamped(Vector2i(640, 560), 0.9)
+
+
+func _on_native_import_dialog_result(status: bool, selected_paths: PackedStringArray, _selected_filter_index: int) -> void:
+	if not status or selected_paths.is_empty():
+		import_status = "IMPORT CANCELED"
+		queue_redraw()
+		return
+	_on_import_file_selected(selected_paths[0])
+
+
+func _on_import_file_selected(source_path: String) -> void:
+	var source := FileAccess.open(source_path, FileAccess.READ)
+	if source == null:
+		import_status = "CANNOT READ FILE"
+		push_error("RYKO import could not read %s" % source_path)
+		queue_redraw()
+		return
+	var raw_text := source.get_as_text()
+	var parsed := LevelDefinition.parse_json_text(raw_text)
+	if not bool(parsed.get("valid", false)):
+		import_status = "INVALID LEVEL JSON"
+		push_error("RYKO import rejected %s: %s" % [source_path, str(parsed.get("errors", []))])
+		queue_redraw()
+		return
+
+	var parsed_level: Dictionary = parsed.get("level", {}) as Dictionary
+	var level_id := String(parsed_level.get("levelId", "")).strip_edges()
+	if level_id.is_empty():
+		level_id = source_path.get_file().get_basename()
+	level_id = _sanitize_level_id(level_id)
+	if level_id.is_empty():
+		import_status = "MISSING LEVEL ID"
+		queue_redraw()
+		return
+
+	_ensure_user_levels_dir()
+	var destination := USER_LEVELS_DIR.path_join("%s.json" % level_id)
+	var output := FileAccess.open(destination, FileAccess.WRITE)
+	if output == null:
+		import_status = "CANNOT SAVE LEVEL"
+		push_error("RYKO import could not write %s" % destination)
+		queue_redraw()
+		return
+	output.store_string(raw_text)
+	output.close()
+
+	_refresh_catalog()
+	for index in range(level_files.size()):
+		if level_files[index] == destination:
+			level_page = int(index / LEVELS_PER_PAGE)
+			break
+	import_status = "IMPORTED %s" % level_id.to_upper()
+	print("RYKO local level imported: %s -> %s" % [source_path, destination])
+	queue_redraw()
+
+
+func _sanitize_level_id(value: String) -> String:
+	var cleaned := value.strip_edges().to_lower()
+	var regex := RegEx.new()
+	if regex.compile("[^a-z0-9_-]") != OK:
+		return cleaned
+	cleaned = regex.sub(cleaned, "_", true)
+	while cleaned.contains("__"):
+		cleaned = cleaned.replace("__", "_")
+	return cleaned.trim_prefix("_").trim_suffix("_")
 
 
 func _draw_action_button(rect: Rect2, label: String, accent: Color) -> void:
