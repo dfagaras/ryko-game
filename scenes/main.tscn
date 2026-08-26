@@ -1,6 +1,5 @@
 [gd_scene load_steps=3 format=3]
 
-# Infinity keeps its established root script. Test levels are exposed by a child launcher only.
 [ext_resource path="res://scripts/game_menu.gd" type="Script" id="1_main"]
 [ext_resource path="res://scripts/level_launcher_access.gd" type="Script" id="2_levels"]
 
