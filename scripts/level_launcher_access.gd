@@ -40,6 +40,7 @@ var level_files: Array[String] = []
 var level_page := 0
 var import_status := ""
 var fallback_font: Font
+var import_dialog: FileDialog
 
 
 func _ready() -> void:
@@ -274,49 +275,46 @@ func _draw_levels_overlay() -> void:
 
 
 func _open_import_dialog() -> void:
+	if is_instance_valid(import_dialog):
+		return
 	import_status = "SELECT JSON..."
 	queue_redraw()
-	var filters := PackedStringArray(["*.json;JSON Level;application/json"])
-	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
-		var error := DisplayServer.file_dialog_show(
-			"Import Ryko Level",
-			"",
-			"",
-			false,
-			DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
-			filters,
-			Callable(self, "_on_native_import_dialog_result")
-		)
-		if error == OK:
-			return
-	_open_fallback_file_dialog()
+	# Opening on a deferred frame avoids handing the same Android touch event
+	# that pressed IMPORT JSON to the system picker as an immediate cancel.
+	call_deferred("_show_import_dialog")
 
 
-func _open_fallback_file_dialog() -> void:
+func _show_import_dialog() -> void:
+	if is_instance_valid(import_dialog):
+		return
 	var dialog := FileDialog.new()
+	import_dialog = dialog
 	dialog.access = FileDialog.ACCESS_FILESYSTEM
 	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	dialog.filters = PackedStringArray(["*.json ; JSON Level"])
+	# Android's native picker uses Storage Access Framework and returns a
+	# content:// URI. FileAccess can read that URI directly in Godot 4.4.
+	dialog.filters = PackedStringArray(["*.json;JSON Level;application/json,text/json"])
 	dialog.use_native_dialog = true
 	dialog.file_selected.connect(_on_import_file_selected)
+	dialog.file_selected.connect(func(_path: String) -> void:
+		_close_import_dialog()
+	)
 	dialog.canceled.connect(func() -> void:
 		import_status = "IMPORT CANCELED"
 		queue_redraw()
-		dialog.queue_free()
-	)
-	dialog.file_selected.connect(func(_path: String) -> void:
-		dialog.queue_free()
+		_close_import_dialog()
 	)
 	add_child(dialog)
 	dialog.popup_centered_clamped(Vector2i(640, 560), 0.9)
 
 
-func _on_native_import_dialog_result(status: bool, selected_paths: PackedStringArray, _selected_filter_index: int) -> void:
-	if not status or selected_paths.is_empty():
-		import_status = "IMPORT CANCELED"
-		queue_redraw()
+func _close_import_dialog() -> void:
+	if not is_instance_valid(import_dialog):
+		import_dialog = null
 		return
-	_on_import_file_selected(selected_paths[0])
+	var dialog := import_dialog
+	import_dialog = null
+	dialog.queue_free()
 
 
 func _on_import_file_selected(source_path: String) -> void:
@@ -327,6 +325,7 @@ func _on_import_file_selected(source_path: String) -> void:
 		queue_redraw()
 		return
 	var raw_text := source.get_as_text()
+	source.close()
 	var parsed := LevelDefinition.parse_json_text(raw_text)
 	if not bool(parsed.get("valid", false)):
 		import_status = "INVALID LEVEL JSON"
