@@ -1,6 +1,7 @@
 extends "res://scripts/level_test_game.gd"
 
 const RUNTIME_LEVEL_KEY := "ryko/runtime_test_level_path"
+# Music preference is process-wide and must survive the switch from Infinity to an authored level scene.
 const BACKGROUND_MUSIC_KEY := "ryko/background_music_enabled"
 const BLOCK_COLOR_PALETTE := {
 	"amber": Color("e7ae43"),
