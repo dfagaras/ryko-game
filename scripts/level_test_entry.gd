@@ -3,8 +3,6 @@ extends "res://scripts/level_test_game.gd"
 const RUNTIME_LEVEL_KEY := "ryko/runtime_test_level_path"
 # Music preference is process-wide and must survive the switch from Infinity to an authored level scene.
 const BACKGROUND_MUSIC_KEY := "ryko/background_music_enabled"
-const MUSIC_SILENT_DB := -80.0
-const MUSIC_DEFAULT_DB := -19.0
 const MUSIC_VOLUME_META := "ryko_music_volume_before_mute"
 const BLOCK_COLOR_PALETTE := {
 	"amber": Color("e7ae43"),
@@ -46,7 +44,7 @@ func _apply_background_music_state() -> void:
 				player.volume_db = float(player.get_meta(MUSIC_VOLUME_META))
 				player.remove_meta(MUSIC_VOLUME_META)
 			elif player.volume_db <= MUSIC_SILENT_DB + 0.1:
-				player.volume_db = MUSIC_DEFAULT_DB
+				player.volume_db = MUSIC_VOLUME_DB
 		else:
 			if not player.has_meta(MUSIC_VOLUME_META):
 				player.set_meta(MUSIC_VOLUME_META, player.volume_db)
