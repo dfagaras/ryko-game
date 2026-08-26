@@ -63,6 +63,10 @@ jobs:
           cp assets/icons/power_ion.png "$site/assets/icons/"
           cp assets/icons/power_plus_one.png "$site/assets/icons/"
           cp assets/icons/power_supernova.png "$site/assets/icons/"
+          test -s "$site/ball-range-extension.js"
+          test -s "$site/ball-range-ui.js"
+          grep -q 'ball-range-extension.js' "$site/index.html"
+          grep -q 'ball-range-ui.js' "$site/index.html"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
