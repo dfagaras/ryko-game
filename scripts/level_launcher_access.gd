@@ -13,6 +13,9 @@ const AQUA := Color("#55b8b1")
 const CORAL := Color("#e96b5f")
 const AMBER := Color("#e7ae43")
 const MUTED := Color("#6e8584")
+const MUSIC_SILENT_DB := -80.0
+const MUSIC_DEFAULT_DB := -19.0
+const MUSIC_VOLUME_META := "ryko_music_volume_before_mute"
 
 # Keep the extra Settings controls in the free space between BALL SOUNDS and BACK.
 # They are intentionally compact so the established Settings panel does not need
@@ -120,13 +123,37 @@ func _apply_background_music_state() -> void:
 	var game := get_parent()
 	if game == null:
 		return
-	var players_variant: Variant = game.get("music_players")
-	if typeof(players_variant) != TYPE_ARRAY:
-		return
 	var enabled := _background_music_enabled()
-	for player_variant in players_variant:
-		if player_variant is AudioStreamPlayer:
-			(player_variant as AudioStreamPlayer).stream_paused = not enabled
+	var found_player := false
+	for child in game.get_children():
+		if child is AudioStreamPlayer and String(child.name).begins_with("MusicPlayer"):
+			found_player = true
+			_apply_player_music_state(child as AudioStreamPlayer, enabled)
+
+	# Compatibility fallback for the existing typed music_players collection.
+	# This handles the same players if their node names ever change.
+	if not found_player:
+		var players_variant: Variant = game.get("music_players")
+		if typeof(players_variant) == TYPE_ARRAY:
+			for player_variant in players_variant:
+				if player_variant is AudioStreamPlayer:
+					_apply_player_music_state(player_variant as AudioStreamPlayer, enabled)
+
+
+func _apply_player_music_state(player: AudioStreamPlayer, enabled: bool) -> void:
+	if enabled:
+		player.stream_paused = false
+		if player.has_meta(MUSIC_VOLUME_META):
+			player.volume_db = float(player.get_meta(MUSIC_VOLUME_META))
+			player.remove_meta(MUSIC_VOLUME_META)
+		elif player.volume_db <= MUSIC_SILENT_DB + 0.1:
+			player.volume_db = MUSIC_DEFAULT_DB
+		return
+
+	if not player.has_meta(MUSIC_VOLUME_META):
+		player.set_meta(MUSIC_VOLUME_META, player.volume_db)
+	player.volume_db = MUSIC_SILENT_DB
+	player.stream_paused = true
 
 
 func _refresh_catalog() -> void:
