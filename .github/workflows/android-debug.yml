@@ -32,6 +32,7 @@ jobs:
           node --check tools/level-editor/editor-extras.js
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
+          node tools/level-editor/validate-top-row-bounds.mjs
 
       - name: Verify final header assets
         shell: bash
