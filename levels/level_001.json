@@ -1,0 +1,394 @@
+{
+  "schemaVersion": 1,
+  "levelId": "level_001",
+  "name": "New Ryko Level",
+  "boardScale": 1,
+  "boardColumns": 7,
+  "boardRows": 9,
+  "board": {
+    "logicalWidth": 720,
+    "logicalHeight": 1280,
+    "boardLeft": 28,
+    "boardRight": 692,
+    "boardTop": 176,
+    "gridX": 40,
+    "gridY": 268,
+    "launchLineY": 1092,
+    "columns": 7,
+    "rows": 9,
+    "cell": 88,
+    "gap": 4,
+    "rowStep": 92,
+    "scale": 1,
+    "columnGap": 4,
+    "rowGap": 4,
+    "columnStep": 92,
+    "gridWidth": 640,
+    "gridHeight": 824,
+    "dangerRow": 8,
+    "visualScale": 1,
+    "ballRadius": 9,
+    "ballCollisionRadius": 10,
+    "ballSpeed": 760,
+    "pickupRadius": 19,
+    "ionRadius": 20,
+    "ghostRadius": 20,
+    "supernovaCoreRadius": 22,
+    "supernovaExplosionRadius": 66
+  },
+  "ball": {
+    "sizeMultiplier": 1
+  },
+  "rules": {
+    "mode": "clear_limited",
+    "startingBalls": 10,
+    "winCondition": "clear_all_content",
+    "loseCondition": "move_limit",
+    "moveLimit": 10,
+    "descent": {
+      "rowsPerMove": 1,
+      "incomingSource": "authored",
+      "loseWhenBlockReachesLaunchLine": true
+    }
+  },
+  "initialBoard": [
+    {
+      "column": 1,
+      "row": 0,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "violet"
+    },
+    {
+      "column": 2,
+      "row": 0,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "violet"
+    },
+    {
+      "column": 3,
+      "row": 0,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "violet"
+    },
+    {
+      "column": 4,
+      "row": 0,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "violet"
+    },
+    {
+      "column": 1,
+      "row": 2,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "ion_blue"
+    },
+    {
+      "column": 2,
+      "row": 2,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "ion_blue"
+    },
+    {
+      "column": 3,
+      "row": 2,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "ion_blue"
+    },
+    {
+      "column": 4,
+      "row": 2,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "ion_blue"
+    },
+    {
+      "column": 5,
+      "row": 2,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "ion_blue"
+    },
+    {
+      "column": 1,
+      "row": 4,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "toxic"
+    },
+    {
+      "column": 5,
+      "row": 0,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "violet"
+    },
+    {
+      "column": 2,
+      "row": 4,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "toxic"
+    },
+    {
+      "column": 3,
+      "row": 4,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "toxic"
+    },
+    {
+      "column": 4,
+      "row": 4,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "toxic"
+    },
+    {
+      "column": 5,
+      "row": 4,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "toxic"
+    },
+    {
+      "column": 1,
+      "row": 6,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "aqua"
+    },
+    {
+      "column": 2,
+      "row": 6,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "aqua"
+    },
+    {
+      "column": 3,
+      "row": 6,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "aqua"
+    },
+    {
+      "column": 4,
+      "row": 6,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "aqua"
+    },
+    {
+      "column": 5,
+      "row": 6,
+      "kind": "block",
+      "shape": "square",
+      "variant": "normal",
+      "hp": 100,
+      "color": "aqua"
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 5,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 4,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 3,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 2,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 1,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 1,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 2,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 3,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 4,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 5,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 6,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 6,
+      "row": 2
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 6,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 6,
+      "row": 0
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 0,
+      "row": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 0,
+      "row": 0
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 0,
+      "row": 2
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 0,
+      "row": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 0,
+      "row": 4
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 6,
+      "row": 4
+    }
+  ],
+  "incomingRows": [],
+  "topRow": [
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 1
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 2
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 3
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 4
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 5
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 6
+    },
+    {
+      "kind": "pickup",
+      "type": "plus_ball",
+      "column": 0
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource path="res://scripts/level_test_entry.gd" type="Script" id="1_main"]
+[ext_resource path="res://scripts/level_clipboard_access.gd" type="Script" id="2_levels"]
+
+[node name="RYKOLevelTest" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="LevelLauncherAccess" type="Node2D" parent="."]
+script = ExtResource("2_levels")
+z_index = 100
