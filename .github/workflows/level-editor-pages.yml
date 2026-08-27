@@ -7,6 +7,7 @@ on:
     paths:
       - "tools/level-editor/**"
       - "assets/icons/**"
+      - "assets/ui/mission_block/**"
       - ".github/workflows/level-editor-pages.yml"
   workflow_dispatch:
 
@@ -33,11 +34,16 @@ jobs:
           node --check tools/level-editor/model.js
           node --check tools/level-editor/ball-range-extension.js
           node --check tools/level-editor/block-color-model.js
+          node --check tools/level-editor/mission-block-model.js
           node --check tools/level-editor/editor.js
           node --check tools/level-editor/scale-controls.js
           node --check tools/level-editor/ball-range-ui.js
           node --check tools/level-editor/editor-extras.js
+          node --check tools/level-editor/mission-block-ui.js
           node tools/level-editor/validate-editor.mjs
+          node tools/level-editor/validate-ball-range.mjs
+          node tools/level-editor/validate-top-row-bounds.mjs
+          node tools/level-editor/validate-mission-core.mjs
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -47,16 +53,18 @@ jobs:
         run: |
           set -euo pipefail
           site="$RUNNER_TEMP/ryko-level-editor-site"
-          mkdir -p "$site/assets/icons"
+          mkdir -p "$site/assets/icons" "$site/assets/ui/mission_block"
           cp tools/level-editor/index.html "$site/index.html"
           cp tools/level-editor/styles.css "$site/styles.css"
           cp tools/level-editor/model.js "$site/model.js"
           cp tools/level-editor/ball-range-extension.js "$site/ball-range-extension.js"
           cp tools/level-editor/block-color-model.js "$site/block-color-model.js"
+          cp tools/level-editor/mission-block-model.js "$site/mission-block-model.js"
           cp tools/level-editor/editor.js "$site/editor.js"
           cp tools/level-editor/scale-controls.js "$site/scale-controls.js"
           cp tools/level-editor/ball-range-ui.js "$site/ball-range-ui.js"
           cp tools/level-editor/editor-extras.js "$site/editor-extras.js"
+          cp tools/level-editor/mission-block-ui.js "$site/mission-block-ui.js"
           touch "$site/.nojekyll"
           cp assets/icons/block_black_hole.png "$site/assets/icons/"
           cp assets/icons/block_dense.png "$site/assets/icons/"
@@ -66,14 +74,12 @@ jobs:
           cp assets/icons/power_ion.png "$site/assets/icons/"
           cp assets/icons/power_plus_one.png "$site/assets/icons/"
           cp assets/icons/power_supernova.png "$site/assets/icons/"
-          test -s "$site/ball-range-extension.js"
-          test -s "$site/ball-range-ui.js"
-          test -s "$site/block-color-model.js"
-          test -s "$site/editor-extras.js"
-          grep -q 'ball-range-extension.js' "$site/index.html"
-          grep -q 'ball-range-ui.js' "$site/index.html"
-          grep -q 'block-color-model.js' "$site/index.html"
-          grep -q 'editor-extras.js' "$site/index.html"
+          cp assets/ui/mission_block/rama.png "$site/assets/ui/mission_block/"
+          test -s "$site/mission-block-model.js"
+          test -s "$site/mission-block-ui.js"
+          test -s "$site/assets/ui/mission_block/rama.png"
+          grep -q 'mission-block-model.js' "$site/index.html"
+          grep -q 'mission-block-ui.js' "$site/index.html"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
