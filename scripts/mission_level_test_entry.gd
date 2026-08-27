@@ -15,8 +15,10 @@ const MISSION_RYKO_FRAMES: Array[Texture2D] = [
 	preload("res://assets/ui/mission_block/pose9.png"),
 	preload("res://assets/ui/mission_block/pose10.png"),
 ]
-# Slower pose cadence keeps Ryko readable while he pushes against the frame.
+# Base cadence is deliberately slower than before. Each Mission Core receives
+# its own small cadence variation and phase so multiple Rykos never move in lockstep.
 const MISSION_FRAME_SECONDS := 0.46
+const MISSION_FRAME_VARIATION_STEP := 0.018
 # Ryko stays inside the inner viewport and clears the taller bottom energy panel.
 const MISSION_POSE_SCALE := 0.78
 const MISSION_POSE_TOP := 0.015
@@ -61,6 +63,10 @@ func _spawn_authored_entity(entity: Dictionary, row: int) -> void:
 		return
 	var starting_hp := maxi(1, int(item.get("hp", 1)))
 	item["max_hp"] = starting_hp
+	# Stable per-block variation: visually asynchronous without changing on every redraw.
+	var animation_seed := absi(int(item.get("column", 0)) * 97 + int(item.get("row", 0)) * 53 + starting_hp * 17 + before * 31)
+	item["mission_anim_phase"] = animation_seed % MISSION_RYKO_FRAMES.size()
+	item["mission_anim_seconds"] = MISSION_FRAME_SECONDS + float(animation_seed % 9) * MISSION_FRAME_VARIATION_STEP
 
 
 func _hit_block(body: StaticBody2D) -> void:
@@ -86,8 +92,9 @@ func _finish_volley() -> void:
 
 func _mission_animation_frame(item: Dictionary) -> Texture2D:
 	var elapsed := float(Time.get_ticks_msec()) / 1000.0
-	var phase_offset := float((int(item.get("column", 0)) * 5 + int(item.get("row", 0)) * 3) % MISSION_RYKO_FRAMES.size())
-	var frame_index := int(floor(elapsed / MISSION_FRAME_SECONDS + phase_offset)) % MISSION_RYKO_FRAMES.size()
+	var frame_seconds := maxf(0.12, float(item.get("mission_anim_seconds", MISSION_FRAME_SECONDS)))
+	var phase_offset := int(item.get("mission_anim_phase", 0))
+	var frame_index := (int(floor(elapsed / frame_seconds)) + phase_offset) % MISSION_RYKO_FRAMES.size()
 	return MISSION_RYKO_FRAMES[frame_index]
 
 
