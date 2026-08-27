@@ -41,9 +41,18 @@
         targetEntity.color = normalizeColor(original?.color);
       }
     });
+
+    // Top row is stored outside the base model, so it must enforce the same
+    // current-board bounds itself. This also cleans stale coordinates left by
+    // older editor versions after shrinking a board (for example 14 -> 7 cols).
+    const boardColumns = Number(target?.board?.columns ?? target?.boardColumns ?? M.BOARD.columns);
+    const occupiedTopColumns = new Set();
     target.topRow = (Array.isArray(source?.topRow) ? source.topRow : []).map((raw) => {
       const normalized = M.normalizeEntity({ ...raw, row: 0 }, 0);
       if (!normalized) return null;
+      if (!Number.isInteger(normalized.column) || normalized.column < 0 || normalized.column >= boardColumns) return null;
+      if (occupiedTopColumns.has(normalized.column)) return null;
+      occupiedTopColumns.add(normalized.column);
       if (normalized.kind === "block") normalized.color = normalizeColor(raw?.color);
       delete normalized.row;
       return normalized;
