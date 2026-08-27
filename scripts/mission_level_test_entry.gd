@@ -2,14 +2,25 @@ extends "res://scripts/level_test_entry.gd"
 
 const MISSION_VARIANT := "mission_core"
 const MISSION_WIN_CONDITION := "destroy_all_objectives"
-const MISSION_FRAME: Texture2D = preload("res://assets/ui/mission_block/rama.png")
+const MISSION_FRAME: Texture2D = preload("res://assets/ui/mission_block/rama (2).png")
 const MISSION_RYKO_FRAMES: Array[Texture2D] = [
-	preload("res://assets/ui/mission_block/ricostatic.png"),
-	preload("res://assets/ui/mission_block/ricoimpingelateral.png"),
-	preload("res://assets/ui/mission_block/ricoimpingelateral1.png"),
-	preload("res://assets/ui/mission_block/ricoimpingesus.png"),
+	preload("res://assets/ui/mission_block/pose1.png"),
+	preload("res://assets/ui/mission_block/pose2.png"),
+	preload("res://assets/ui/mission_block/pose3.png"),
+	preload("res://assets/ui/mission_block/pose4.png"),
+	preload("res://assets/ui/mission_block/pose5.png"),
+	preload("res://assets/ui/mission_block/pose6.png"),
+	preload("res://assets/ui/mission_block/pose7.png"),
+	preload("res://assets/ui/mission_block/pose8.png"),
+	preload("res://assets/ui/mission_block/pose9.png"),
+	preload("res://assets/ui/mission_block/pose10.png"),
 ]
 const MISSION_FRAME_SECONDS := 0.28
+# Ryko is rendered on the same normalized footprint for every authored board size.
+# The square pose canvas sits inside the frame and leaves the bottom HP panel free.
+const MISSION_POSE_SCALE := 0.82
+const MISSION_POSE_TOP := 0.015
+const MISSION_HP_Y := 0.915
 
 
 func _authored_uses_mission_objectives() -> bool:
@@ -56,8 +67,16 @@ func _mission_animation_frame(item: Dictionary) -> Texture2D:
 	return MISSION_RYKO_FRAMES[frame_index]
 
 
+func _mission_pose_rect(cell_rect: Rect2) -> Rect2:
+	var pose_size := cell_rect.size.x * MISSION_POSE_SCALE
+	return Rect2(
+		Vector2(cell_rect.get_center().x - pose_size * 0.5, cell_rect.position.y + cell_rect.size.y * MISSION_POSE_TOP),
+		Vector2.ONE * pose_size
+	)
+
+
 func _draw_blocks() -> void:
-	# Preserve every established authored block exactly as-is, then cover only
+	# Preserve every established authored block exactly as-is, then replace only
 	# Mission Core cells with the dedicated art. Infinity is untouched because
 	# this script exists only in the authored level scene.
 	super._draw_blocks()
@@ -66,7 +85,6 @@ func _draw_blocks() -> void:
 
 	var cell := _active_cell()
 	var scale := float(authored_profile.get("visual_scale", 1.0))
-	var inset := maxf(1.0, cell * 0.055)
 	var hp_font_size := maxi(6, int(round(18.0 * scale)))
 
 	for item in blocks:
@@ -80,15 +98,21 @@ func _draw_blocks() -> void:
 
 		var center: Vector2 = item["position"]
 		var rect := Rect2(center - Vector2.ONE * cell * 0.5, Vector2.ONE * cell)
-		# Mask the generic authored-square rendering (including its centered HP)
-		# before composing the static frame, animated Ryko layer and dynamic HP.
-		draw_rect(rect.grow(-inset), PANEL, true)
-		draw_texture_rect(_mission_animation_frame(item), rect, false)
+
+		# Cover the generic authored-square layer completely. This removes the old
+		# coral/red outline before any Mission Core artwork is composited.
+		draw_rect(rect, PANEL, true)
+		# The frame is a full square 2D tile, so it remains aligned with adjacent
+		# blocks on 7x9, dense and micro-grid board profiles.
 		draw_texture_rect(MISSION_FRAME, rect, false)
+		# All ten pose assets use the same square destination and anchor. The pose
+		# footprint is intentionally close to the inner walls so Ryko reads as if
+		# he is pushing against the frame while never reaching the HP panel.
+		draw_texture_rect(_mission_animation_frame(item), _mission_pose_rect(rect), false)
 
 		var hit_flash_ratio := clampf(float(item.get("hit_flash", 0.0)) / BLOCK_HIT_FLASH_DURATION, 0.0, 1.0)
 		if hit_flash_ratio > 0.0:
 			draw_rect(rect, Color(CREAM, hit_flash_ratio * 0.18), true)
 
-		var hp_center := Vector2(center.x, rect.position.y + rect.size.y * 0.875)
+		var hp_center := Vector2(center.x, rect.position.y + rect.size.y * MISSION_HP_Y)
 		_draw_centered_label(str(item.get("hp", 1)), hp_center, hp_font_size, CREAM)
