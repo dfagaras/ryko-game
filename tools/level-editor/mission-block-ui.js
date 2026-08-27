@@ -18,7 +18,7 @@
 
   function missionAssetUrl() {
     const inRepoToolPath = window.location.protocol === "file:" || window.location.pathname.includes("/tools/level-editor/");
-    return inRepoToolPath ? "../../assets/ui/mission_block/rama%20(2).png" : "assets/ui/mission_block/rama%20(2).png";
+    return inRepoToolPath ? "../../assets/ui/mission_block/rama%20(3).png" : "assets/ui/mission_block/rama%20(3).png";
   }
 
   function loadLevel() {
