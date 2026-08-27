@@ -74,10 +74,10 @@ jobs:
           cp assets/icons/power_ion.png "$site/assets/icons/"
           cp assets/icons/power_plus_one.png "$site/assets/icons/"
           cp assets/icons/power_supernova.png "$site/assets/icons/"
-          cp assets/ui/mission_block/rama.png "$site/assets/ui/mission_block/"
+          cp "assets/ui/mission_block/rama (3).png" "$site/assets/ui/mission_block/"
           test -s "$site/mission-block-model.js"
           test -s "$site/mission-block-ui.js"
-          test -s "$site/assets/ui/mission_block/rama.png"
+          test -s "$site/assets/ui/mission_block/rama (3).png"
           grep -q 'mission-block-model.js' "$site/index.html"
           grep -q 'mission-block-ui.js' "$site/index.html"
 
