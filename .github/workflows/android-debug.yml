@@ -26,13 +26,16 @@ jobs:
           node --check tools/level-editor/model.js
           node --check tools/level-editor/ball-range-extension.js
           node --check tools/level-editor/block-color-model.js
+          node --check tools/level-editor/mission-block-model.js
           node --check tools/level-editor/editor.js
           node --check tools/level-editor/scale-controls.js
           node --check tools/level-editor/ball-range-ui.js
           node --check tools/level-editor/editor-extras.js
+          node --check tools/level-editor/mission-block-ui.js
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
           node tools/level-editor/validate-top-row-bounds.mjs
+          node tools/level-editor/validate-mission-core.mjs
 
       - name: Verify final header assets
         shell: bash
