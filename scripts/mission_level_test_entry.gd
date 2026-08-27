@@ -19,6 +19,11 @@ const MISSION_RYKO_FRAMES: Array[Texture2D] = [
 # its own small cadence variation and phase so multiple Rykos never move in lockstep.
 const MISSION_FRAME_SECONDS := 0.46
 const MISSION_FRAME_VARIATION_STEP := 0.018
+# The source art has a small transparent presentation gutter on the left/right.
+# Crop that gutter at draw time and stretch the visible square frame to the exact
+# authored cell footprint. This keeps the gameplay grid untouched while removing
+# the false extra black spacing next to neighbouring blocks.
+const MISSION_FRAME_CROP_X := 0.035
 # Ryko stays inside the inner viewport and clears the taller bottom energy panel.
 const MISSION_POSE_SCALE := 0.78
 const MISSION_POSE_TOP := 0.015
@@ -104,6 +109,16 @@ func _mission_pose_rect(cell_rect: Rect2) -> Rect2:
 		Vector2(cell_rect.get_center().x - pose_size * 0.5, cell_rect.position.y + cell_rect.size.y * MISSION_POSE_TOP),
 		Vector2.ONE * pose_size
 	)
+
+
+func _draw_mission_frame(cell_rect: Rect2) -> void:
+	var texture_size := MISSION_FRAME.get_size()
+	var crop_pixels := texture_size.x * MISSION_FRAME_CROP_X
+	var source_rect := Rect2(
+		Vector2(crop_pixels, 0.0),
+		Vector2(maxf(1.0, texture_size.x - crop_pixels * 2.0), texture_size.y)
+	)
+	draw_texture_rect_region(MISSION_FRAME, cell_rect, source_rect)
 
 
 func _mission_bar_polygon(cell_rect: Rect2) -> PackedVector2Array:
@@ -192,9 +207,9 @@ func _draw_blocks() -> void:
 		# Cover the generic authored-square rendering completely first. This is the
 		# guard against the old coral/red or any other generic outer outline.
 		draw_rect(rect, PANEL, true)
-		# The final frame contains the static interior/background, so it is drawn
-		# first. Ryko is then composited above it, inside a safe inner footprint.
-		draw_texture_rect(MISSION_FRAME, rect, false)
+		# The final frame artwork is cropped horizontally at draw time to remove its
+		# transparent presentation gutter, then mapped to the exact logical cell.
+		_draw_mission_frame(rect)
 		draw_texture_rect(_mission_animation_frame(item), _mission_pose_rect(rect), false)
 		_draw_mission_progress(item, rect)
 
