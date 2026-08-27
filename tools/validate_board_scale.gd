@@ -2,11 +2,13 @@ extends SceneTree
 
 const BoardProfile = preload("res://scripts/level_board_profile.gd")
 const LevelDefinition = preload("res://scripts/level_definition.gd")
+const MissionRuntime = preload("res://scripts/mission_level_test_entry.gd")
 
 
 func _init() -> void:
 	for scale in [1, 2, 3, 4]:
 		_validate_profile(scale)
+	_validate_mission_visual_contract()
 	_validate_level_parser()
 	_validate_invalid_contracts()
 	print("RYKO scalable authored-board runtime validation: PASS")
@@ -32,6 +34,27 @@ func _validate_profile(scale: int) -> void:
 	var last_rect := BoardProfile.cell_rect(profile, int(profile["columns"]) - 1, int(profile["rows"]) - 1)
 	_check(is_equal_approx(last_rect.end.x, grid.end.x), "last column does not fit at %dx" % scale)
 	_check(is_equal_approx(last_rect.end.y, grid.end.y), "last row does not fit at %dx" % scale)
+
+
+func _validate_mission_visual_contract() -> void:
+	var bar_width_ratio := float(MissionRuntime.MISSION_BAR_RIGHT - MissionRuntime.MISSION_BAR_LEFT)
+	var bar_height_ratio := float(MissionRuntime.MISSION_BAR_BOTTOM - MissionRuntime.MISSION_BAR_TOP)
+	_check(bar_width_ratio >= 0.80, "Mission progress bar does not fill enough of the lower slot")
+	_check(bar_height_ratio >= 0.14, "Mission progress bar is too thin vertically")
+	_check(float(MissionRuntime.MISSION_FRAME_CROP_X) > 0.0, "Mission frame horizontal gutter crop is disabled")
+	_check(float(MissionRuntime.MISSION_FRAME_CROP_Y) > 0.0, "Mission frame vertical gutter crop is disabled")
+
+	for dimensions in [Vector2i(7, 9), Vector2i(14, 18), Vector2i(28, 36), Vector2i(10, 13)]:
+		var profile := BoardProfile.from_dimensions(dimensions.x, dimensions.y)
+		var cell := float(profile["cell"])
+		var bar_width := cell * bar_width_ratio
+		var bar_height := cell * bar_height_ratio
+		var left_inset := cell * float(MissionRuntime.MISSION_BAR_LEFT)
+		var right_inset := cell * (1.0 - float(MissionRuntime.MISSION_BAR_RIGHT))
+		_check(bar_width > 0.0 and bar_height > 0.0, "Mission progress collapsed at %dx%d" % [dimensions.x, dimensions.y])
+		_check(is_equal_approx(left_inset, right_inset), "Mission progress is not horizontally centered at %dx%d" % [dimensions.x, dimensions.y])
+		_check(is_equal_approx(bar_width / cell, bar_width_ratio), "Mission progress width ratio drifted at %dx%d" % [dimensions.x, dimensions.y])
+		_check(is_equal_approx(bar_height / cell, bar_height_ratio), "Mission progress height ratio drifted at %dx%d" % [dimensions.x, dimensions.y])
 
 
 func _validate_level_parser() -> void:
