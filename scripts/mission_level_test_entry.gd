@@ -15,7 +15,8 @@ const MISSION_RYKO_FRAMES: Array[Texture2D] = [
 	preload("res://assets/ui/mission_block/pose9.png"),
 	preload("res://assets/ui/mission_block/pose10.png"),
 ]
-const MISSION_FRAME_SECONDS := 0.28
+# Slower pose cadence keeps Ryko readable while he pushes against the frame.
+const MISSION_FRAME_SECONDS := 0.46
 # Ryko stays inside the inner viewport and clears the taller bottom energy panel.
 const MISSION_POSE_SCALE := 0.78
 const MISSION_POSE_TOP := 0.015
@@ -27,6 +28,7 @@ const MISSION_BAR_RIGHT := 0.825
 const MISSION_BAR_TOP := 0.825
 const MISSION_BAR_BOTTOM := 0.915
 const MISSION_BAR_CHAMFER := 0.035
+const MISSION_BAR_GREEN := Color("#6edc5f")
 
 
 func _authored_uses_mission_objectives() -> bool:
@@ -149,7 +151,7 @@ func _draw_mission_progress(item: Dictionary, cell_rect: Rect2) -> void:
 	var fill_right := lerpf(left, right, ratio)
 	var fill := _clip_polygon_right(track, fill_right)
 	if fill.size() >= 3:
-		draw_colored_polygon(fill, Color(AQUA, 0.96))
+		draw_colored_polygon(fill, Color(MISSION_BAR_GREEN, 0.97))
 		# A subtle inner highlight makes each live decrement readable on phone
 		# without adding an outline outside the frame.
 		var highlight_y := cell_rect.position.y + cell_rect.size.y * (MISSION_BAR_TOP + 0.012)
