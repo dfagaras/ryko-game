@@ -19,22 +19,22 @@ const MISSION_RYKO_FRAMES: Array[Texture2D] = [
 # its own small cadence variation and phase so multiple Rykos never move in lockstep.
 const MISSION_FRAME_SECONDS := 0.46
 const MISSION_FRAME_VARIATION_STEP := 0.018
-# The source art has a small transparent presentation gutter on the left/right.
-# Crop that gutter at draw time and stretch the visible square frame to the exact
-# authored cell footprint. This keeps the gameplay grid untouched while removing
-# the false extra black spacing next to neighbouring blocks.
-const MISSION_FRAME_CROP_X := 0.035
+# The final PNG still carries presentation gutter around the actual metal tile.
+# Crop that gutter at draw time and map the visible artwork to the exact logical
+# cell. The crop is source-only: collision and authored grid geometry never move.
+const MISSION_FRAME_CROP_X := 0.060
+const MISSION_FRAME_CROP_Y := 0.015
 # Ryko stays inside the inner viewport and clears the taller bottom energy panel.
 const MISSION_POSE_SCALE := 0.78
 const MISSION_POSE_TOP := 0.015
-# Normalized safe area measured against the final frame artwork. The bar spans
-# the lower panel between the two screw/corner assemblies, while the chamfers
-# keep the code-drawn fill inside the cut corners of the image.
-const MISSION_BAR_LEFT := 0.175
-const MISSION_BAR_RIGHT := 0.825
-const MISSION_BAR_TOP := 0.825
-const MISSION_BAR_BOTTOM := 0.915
-const MISSION_BAR_CHAMFER := 0.035
+# Safe area measured against the visible lower energy window in the final frame.
+# At 100% HP the green polygon fills the entire recessed slot up to its chamfered
+# corners; damage clips that same polygon continuously from right to left.
+const MISSION_BAR_LEFT := 0.115
+const MISSION_BAR_RIGHT := 0.885
+const MISSION_BAR_TOP := 0.835
+const MISSION_BAR_BOTTOM := 0.925
+const MISSION_BAR_CHAMFER := 0.040
 const MISSION_BAR_GREEN := Color("#6edc5f")
 
 
@@ -113,10 +113,14 @@ func _mission_pose_rect(cell_rect: Rect2) -> Rect2:
 
 func _draw_mission_frame(cell_rect: Rect2) -> void:
 	var texture_size := MISSION_FRAME.get_size()
-	var crop_pixels := texture_size.x * MISSION_FRAME_CROP_X
+	var crop_x := texture_size.x * MISSION_FRAME_CROP_X
+	var crop_y := texture_size.y * MISSION_FRAME_CROP_Y
 	var source_rect := Rect2(
-		Vector2(crop_pixels, 0.0),
-		Vector2(maxf(1.0, texture_size.x - crop_pixels * 2.0), texture_size.y)
+		Vector2(crop_x, crop_y),
+		Vector2(
+			maxf(1.0, texture_size.x - crop_x * 2.0),
+			maxf(1.0, texture_size.y - crop_y * 2.0)
+		)
 	)
 	draw_texture_rect_region(MISSION_FRAME, cell_rect, source_rect)
 
@@ -207,8 +211,8 @@ func _draw_blocks() -> void:
 		# Cover the generic authored-square rendering completely first. This is the
 		# guard against the old coral/red or any other generic outer outline.
 		draw_rect(rect, PANEL, true)
-		# The final frame artwork is cropped horizontally at draw time to remove its
-		# transparent presentation gutter, then mapped to the exact logical cell.
+		# Crop presentation gutter from the source frame, then map the visible tile
+		# to the exact authored cell so Mission Core spacing matches every neighbour.
 		_draw_mission_frame(rect)
 		draw_texture_rect(_mission_animation_frame(item), _mission_pose_rect(rect), false)
 		_draw_mission_progress(item, rect)
