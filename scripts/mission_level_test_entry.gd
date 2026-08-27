@@ -19,22 +19,24 @@ const MISSION_RYKO_FRAMES: Array[Texture2D] = [
 # its own small cadence variation and phase so multiple Rykos never move in lockstep.
 const MISSION_FRAME_SECONDS := 0.46
 const MISSION_FRAME_VARIATION_STEP := 0.018
-# The final PNG still carries presentation gutter around the actual metal tile.
-# Crop that gutter at draw time and map the visible artwork to the exact logical
-# cell. The crop is source-only: collision and authored grid geometry never move.
-const MISSION_FRAME_CROP_X := 0.060
-const MISSION_FRAME_CROP_Y := 0.015
+# The PNG contains a presentation gutter around the actual metal tile. These
+# ratios crop only the source image; collision and authored grid geometry stay
+# untouched. The visible frame is then stretched to the exact logical cell,
+# so spacing remains identical on 7x9, 14x18, 28x36 and custom board sizes.
+const MISSION_FRAME_CROP_X := 0.085
+const MISSION_FRAME_CROP_Y := 0.028
 # Ryko stays inside the inner viewport and clears the taller bottom energy panel.
 const MISSION_POSE_SCALE := 0.78
 const MISSION_POSE_TOP := 0.015
-# Safe area measured against the visible lower energy window in the final frame.
-# At 100% HP the green polygon fills the entire recessed slot up to its chamfered
-# corners; damage clips that same polygon continuously from right to left.
-const MISSION_BAR_LEFT := 0.115
-const MISSION_BAR_RIGHT := 0.885
-const MISSION_BAR_TOP := 0.835
-const MISSION_BAR_BOTTOM := 0.925
-const MISSION_BAR_CHAMFER := 0.040
+# Normalized safe area of the final lower energy window. These values are
+# relative to the cell, not fixed pixels, so the bar keeps the same proportions
+# on every supported board size. At 100% HP the green polygon fills the entire
+# usable recessed slot; damage clips this exact polygon from right to left.
+const MISSION_BAR_LEFT := 0.085
+const MISSION_BAR_RIGHT := 0.915
+const MISSION_BAR_TOP := 0.800
+const MISSION_BAR_BOTTOM := 0.955
+const MISSION_BAR_CHAMFER := 0.025
 const MISSION_BAR_GREEN := Color("#6edc5f")
 
 
@@ -111,18 +113,21 @@ func _mission_pose_rect(cell_rect: Rect2) -> Rect2:
 	)
 
 
-func _draw_mission_frame(cell_rect: Rect2) -> void:
+func _mission_frame_source_rect() -> Rect2:
 	var texture_size := MISSION_FRAME.get_size()
 	var crop_x := texture_size.x * MISSION_FRAME_CROP_X
 	var crop_y := texture_size.y * MISSION_FRAME_CROP_Y
-	var source_rect := Rect2(
+	return Rect2(
 		Vector2(crop_x, crop_y),
 		Vector2(
 			maxf(1.0, texture_size.x - crop_x * 2.0),
 			maxf(1.0, texture_size.y - crop_y * 2.0)
 		)
 	)
-	draw_texture_rect_region(MISSION_FRAME, cell_rect, source_rect)
+
+
+func _draw_mission_frame(cell_rect: Rect2) -> void:
+	draw_texture_rect_region(MISSION_FRAME, cell_rect, _mission_frame_source_rect())
 
 
 func _mission_bar_polygon(cell_rect: Rect2) -> PackedVector2Array:
@@ -211,8 +216,9 @@ func _draw_blocks() -> void:
 		# Cover the generic authored-square rendering completely first. This is the
 		# guard against the old coral/red or any other generic outer outline.
 		draw_rect(rect, PANEL, true)
-		# Crop presentation gutter from the source frame, then map the visible tile
-		# to the exact authored cell so Mission Core spacing matches every neighbour.
+		# Crop presentation gutter from the source frame and map the visible tile
+		# exactly to the authored cell. This is size-independent and therefore
+		# preserves the same perceived spacing on every board density.
 		_draw_mission_frame(rect)
 		draw_texture_rect(_mission_animation_frame(item), _mission_pose_rect(rect), false)
 		_draw_mission_progress(item, rect)
