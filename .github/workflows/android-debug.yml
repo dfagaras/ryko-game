@@ -37,6 +37,17 @@ jobs:
           node tools/level-editor/validate-top-row-bounds.mjs
           node tools/level-editor/validate-mission-core.mjs
 
+      - name: Validate Mission Core Pages asset contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mission_frame="assets/ui/mission_block/rama (3).png"
+          test -s "$mission_frame"
+          grep -Fq 'rama%20(3).png' tools/level-editor/mission-block-ui.js
+          grep -Fq 'cp "assets/ui/mission_block/rama (3).png"' .github/workflows/level-editor-pages.yml
+          grep -Fq 'test -s "$site/assets/ui/mission_block/rama (3).png"' .github/workflows/level-editor-pages.yml
+          echo "Mission Core Pages asset contract verified: $mission_frame"
+
       - name: Verify final header assets
         shell: bash
         run: |
