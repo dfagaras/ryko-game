@@ -1,0 +1,42 @@
+name: RYKO Level Mechanics Validation
+
+on:
+  push:
+    branches:
+      - develop
+      - "feature/**"
+    paths:
+      - "tools/level-editor/mechanics-*.js"
+      - "tools/level-editor/validate-mechanics.mjs"
+      - "scripts/level_mechanics_test_entry.gd"
+      - "scenes/level_test.tscn"
+      - ".github/workflows/level-mechanics-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-mechanics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate mechanics editor model
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tools/level-editor/mechanics-model.js
+          node --check tools/level-editor/mechanics-ui.js
+          node --check tools/level-editor/validate-mechanics.mjs
+          node tools/level-editor/validate-mechanics.mjs
+      - name: Validate mechanics GDScript parses
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot_zip="$RUNNER_TEMP/godot-4.4.1.zip"
+          godot_dir="$RUNNER_TEMP/godot-4.4.1"
+          curl -L --fail --silent --show-error -o "$godot_zip" https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          mkdir -p "$godot_dir"
+          unzip -q "$godot_zip" -d "$godot_dir"
+          godot="$godot_dir/Godot_v4.4.1-stable_linux.x86_64"
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-data" XDG_CONFIG_HOME="$RUNNER_TEMP/godot-config" "$godot" --headless --path . --editor --quit-after 3
