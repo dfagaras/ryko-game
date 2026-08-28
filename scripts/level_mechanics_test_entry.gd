@@ -72,6 +72,12 @@ func _load_level_mechanics() -> void:
 			})
 
 
+func _process(delta: float) -> void:
+	super._process(delta)
+	if authored_mode and not level_lasers.is_empty():
+		queue_redraw()
+
+
 func _physics_process(delta: float) -> void:
 	_capture_mechanic_ball_positions()
 	super._physics_process(delta)
@@ -80,8 +86,6 @@ func _physics_process(delta: float) -> void:
 	mechanics_elapsed += delta
 	_process_directional_launchers()
 	_process_timed_lasers()
-	if not level_lasers.is_empty():
-		queue_redraw()
 
 
 func _capture_mechanic_ball_positions() -> void:
@@ -218,7 +222,7 @@ func _mechanic_direction_vector(direction: String) -> Vector2:
 
 func _draw() -> void:
 	super._draw()
-	if not authored_mode:
+	if not authored_mode or menu_open:
 		return
 	draw_set_transform(Vector2(layout_content_x, layout_board_y_offset), 0.0, Vector2.ONE)
 	_draw_level_launchers()
@@ -241,7 +245,7 @@ func _draw_level_launchers() -> void:
 
 func _draw_level_lasers() -> void:
 	for laser_data in level_lasers:
-		var active := _laser_is_active(laser_data)
+		var active := state == TurnState.FIRING and _laser_is_active(laser_data)
 		var width := maxf(2.0, MECHANIC_LASER_WIDTH * float(authored_profile.get("visual_scale", 1.0)))
 		var emitter_radius := maxf(3.0, _active_cell() * 0.08)
 		var visual_inset := emitter_radius + width * 0.5 + 1.0
