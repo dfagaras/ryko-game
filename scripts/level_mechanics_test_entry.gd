@@ -245,7 +245,7 @@ func _draw_level_launchers() -> void:
 
 func _draw_level_lasers() -> void:
 	for laser_data in level_lasers:
-		var active := state == TurnState.FIRING and _laser_is_active(laser_data)
+		var active := _laser_is_active(laser_data)
 		var width := maxf(2.0, MECHANIC_LASER_WIDTH * float(authored_profile.get("visual_scale", 1.0)))
 		var emitter_radius := maxf(3.0, _active_cell() * 0.08)
 		var visual_inset := emitter_radius + width * 0.5 + 1.0
