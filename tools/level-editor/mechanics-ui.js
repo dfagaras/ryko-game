@@ -155,6 +155,23 @@
     boardGrid.classList.toggle("placing-launcher", Boolean(armedDirection));
   }
 
+  function readLaserNumber(id, min, max = Infinity) {
+    const input = $(id);
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value < min || value > max) {
+      input.focus();
+      return null;
+    }
+    return value;
+  }
+
+  function mutationTouchesBoardCells(mutations) {
+    return mutations.some((mutation) => [...mutation.addedNodes, ...mutation.removedNodes].some((node) => {
+      if (!(node instanceof Element)) return false;
+      return node.matches(".board-cell") || Boolean(node.querySelector?.(".board-cell"));
+    }));
+  }
+
   boardGrid.addEventListener("click", (event) => {
     if (!armedDirection) return;
     const cell = event.target.closest(".board-cell");
@@ -171,24 +188,44 @@
 
   $("cancelLauncherButton").addEventListener("click", () => { armedDirection = null; render(); });
   $("addLaserButton").addEventListener("click", () => {
+    const fromX = readLaserNumber("laserFromX", 0, 1);
+    const fromY = readLaserNumber("laserFromY", 0, 1);
+    const toX = readLaserNumber("laserToX", 0, 1);
+    const toY = readLaserNumber("laserToY", 0, 1);
+    const onSeconds = readLaserNumber("laserOnSeconds", 0.05);
+    const offSeconds = readLaserNumber("laserOffSeconds", 0.05);
+    const startDelay = readLaserNumber("laserStartDelay", 0);
+    if ([fromX, fromY, toX, toY, onSeconds, offSeconds, startDelay].some((value) => value === null)) {
+      window.alert("Laser values are invalid. Position must be 0–1, ON/OFF must be at least 0.05s, and delay cannot be negative.");
+      return;
+    }
+    if (fromX === toX && fromY === toY) {
+      $("laserToX").focus();
+      window.alert("Laser needs two different endpoints.");
+      return;
+    }
+
     const level = readLevel();
     level.mechanics.lasers.push({
       id: nextId(level.mechanics.lasers, "laser"),
-      from: { x: Number($("laserFromX").value), y: Number($("laserFromY").value) },
-      to: { x: Number($("laserToX").value), y: Number($("laserToY").value) },
-      onSeconds: Number($("laserOnSeconds").value), offSeconds: Number($("laserOffSeconds").value),
-      startDelay: Number($("laserStartDelay").value), startsOn: $("laserStartsOn").value === "on"
+      from: { x: fromX, y: fromY },
+      to: { x: toX, y: toY },
+      onSeconds, offSeconds,
+      startDelay, startsOn: $("laserStartsOn").value === "on"
     });
     saveLevel(level);
   });
 
-  const observer = new MutationObserver(() => queueMicrotask(() => {
-    if (!document.body.contains(wrap)) return;
-    const level = readLevel();
-    renderLaunchers(level);
-    renderLasers(level);
-  }));
-  observer.observe(boardGrid, { childList: true });
+  const observer = new MutationObserver((mutations) => {
+    if (!mutationTouchesBoardCells(mutations)) return;
+    queueMicrotask(() => {
+      if (!document.body.contains(wrap)) return;
+      const level = readLevel();
+      renderLaunchers(level);
+      renderLasers(level);
+    });
+  });
+  observer.observe(boardGrid, { childList: true, subtree: true });
 
   render();
 })();
