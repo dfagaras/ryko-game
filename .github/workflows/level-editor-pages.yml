@@ -32,6 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/level-editor/model.js
+          node --check tools/level-editor/mechanics-model.js
           node --check tools/level-editor/ball-range-extension.js
           node --check tools/level-editor/block-color-model.js
           node --check tools/level-editor/mission-block-model.js
@@ -40,10 +41,12 @@ jobs:
           node --check tools/level-editor/ball-range-ui.js
           node --check tools/level-editor/editor-extras.js
           node --check tools/level-editor/mission-block-ui.js
+          node --check tools/level-editor/mechanics-ui.js
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
           node tools/level-editor/validate-top-row-bounds.mjs
           node tools/level-editor/validate-mission-core.mjs
+          node tools/level-editor/validate-mechanics.mjs
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -57,6 +60,7 @@ jobs:
           cp tools/level-editor/index.html "$site/index.html"
           cp tools/level-editor/styles.css "$site/styles.css"
           cp tools/level-editor/model.js "$site/model.js"
+          cp tools/level-editor/mechanics-model.js "$site/mechanics-model.js"
           cp tools/level-editor/ball-range-extension.js "$site/ball-range-extension.js"
           cp tools/level-editor/block-color-model.js "$site/block-color-model.js"
           cp tools/level-editor/mission-block-model.js "$site/mission-block-model.js"
@@ -65,6 +69,7 @@ jobs:
           cp tools/level-editor/ball-range-ui.js "$site/ball-range-ui.js"
           cp tools/level-editor/editor-extras.js "$site/editor-extras.js"
           cp tools/level-editor/mission-block-ui.js "$site/mission-block-ui.js"
+          cp tools/level-editor/mechanics-ui.js "$site/mechanics-ui.js"
           touch "$site/.nojekyll"
           cp assets/icons/block_black_hole.png "$site/assets/icons/"
           cp assets/icons/block_dense.png "$site/assets/icons/"
@@ -77,9 +82,13 @@ jobs:
           cp "assets/ui/mission_block/rama (3).png" "$site/assets/ui/mission_block/"
           test -s "$site/mission-block-model.js"
           test -s "$site/mission-block-ui.js"
+          test -s "$site/mechanics-model.js"
+          test -s "$site/mechanics-ui.js"
           test -s "$site/assets/ui/mission_block/rama (3).png"
           grep -q 'mission-block-model.js' "$site/index.html"
           grep -q 'mission-block-ui.js' "$site/index.html"
+          grep -q 'mechanics-model.js' "$site/index.html"
+          grep -q 'mechanics-ui.js' "$site/index.html"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
