@@ -1,7 +1,7 @@
 extends "res://scripts/mission_level_test_entry.gd"
 
 const MECHANIC_LASER_ACTIVE := Color("#ff4058")
-const MECHANIC_LASER_IDLE := Color(0.45, 0.18, 0.20, 0.48)
+const MECHANIC_LASER_IDLE := Color(0.45, 0.18, 0.20, 0.24)
 const MECHANIC_LAUNCHER := Color("#55bfe3")
 const MECHANIC_LAUNCHER_CORE := Color("#f2e3bb")
 const MECHANIC_LASER_WIDTH := 7.0
@@ -170,6 +170,18 @@ func _laser_segment(laser_data: Dictionary) -> Array[Vector2]:
 	return [Vector2(BOARD_LEFT, BOARD_TOP) + from_normalized * size, Vector2(BOARD_LEFT, BOARD_TOP) + to_normalized * size]
 
 
+func _laser_visual_segment(laser_data: Dictionary, inset: float) -> Array[Vector2]:
+	var from_normalized: Vector2 = laser_data.get("from", Vector2.ZERO)
+	var to_normalized: Vector2 = laser_data.get("to", Vector2.ONE)
+	var safe_inset := maxf(0.0, inset)
+	var origin := Vector2(BOARD_LEFT + safe_inset, BOARD_TOP + safe_inset)
+	var size := Vector2(
+		maxf(0.0, (BOARD_RIGHT - BOARD_LEFT) - safe_inset * 2.0),
+		maxf(0.0, (RETURN_Y - BOARD_TOP) - safe_inset * 2.0)
+	)
+	return [origin + from_normalized * size, origin + to_normalized * size]
+
+
 func _motion_touches_segment(motion_from: Vector2, motion_to: Vector2, laser_from: Vector2, laser_to: Vector2, radius: float) -> bool:
 	var distance := motion_from.distance_to(motion_to)
 	var step := maxf(2.0, radius * 0.5)
@@ -227,11 +239,15 @@ func _draw_level_launchers() -> void:
 
 func _draw_level_lasers() -> void:
 	for laser_data in level_lasers:
-		var segment := _laser_segment(laser_data)
 		var active := _laser_is_active(laser_data)
-		var color := MECHANIC_LASER_ACTIVE if active else MECHANIC_LASER_IDLE
 		var width := maxf(2.0, MECHANIC_LASER_WIDTH * float(authored_profile.get("visual_scale", 1.0)))
-		draw_line(segment[0], segment[1], color, width if active else maxf(1.0, width * 0.45), true)
 		var emitter_radius := maxf(3.0, _active_cell() * 0.08)
-		draw_circle(segment[0], emitter_radius, color)
-		draw_circle(segment[1], emitter_radius, color)
+		var visual_inset := emitter_radius + width * 0.5 + 1.0
+		var segment := _laser_visual_segment(laser_data, visual_inset)
+		if active:
+			draw_line(segment[0], segment[1], MECHANIC_LASER_ACTIVE, width, true)
+			draw_circle(segment[0], emitter_radius, MECHANIC_LASER_ACTIVE)
+			draw_circle(segment[1], emitter_radius, MECHANIC_LASER_ACTIVE)
+		else:
+			draw_circle(segment[0], emitter_radius, MECHANIC_LASER_IDLE)
+			draw_circle(segment[1], emitter_radius, MECHANIC_LASER_IDLE)
