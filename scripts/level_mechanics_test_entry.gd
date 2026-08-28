@@ -80,6 +80,8 @@ func _physics_process(delta: float) -> void:
 	mechanics_elapsed += delta
 	_process_directional_launchers()
 	_process_timed_lasers()
+	if not level_lasers.is_empty():
+		queue_redraw()
 
 
 func _capture_mechanic_ball_positions() -> void:
