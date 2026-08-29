@@ -58,6 +58,12 @@
     return document.querySelector(".tool.active")?.dataset?.tool || "select";
   }
 
+  function blackHolePlacementSides() {
+    const fields = document.getElementById("blackHolePlacementFields");
+    const sides = fields ? [...fields.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value) : [];
+    return sides.length ? sides : ["top"];
+  }
+
   function makeEntity(toolId, column) {
     const hp = Math.max(1, Number.parseInt(document.getElementById("defaultHp")?.value || "1", 10) || 1);
     const color = activeColor();
@@ -67,7 +73,7 @@
     if (toolId === "dense") return { kind:"block", shape:"square", variant:"dense", hp, column, color };
     if (toolId === "regen") return { kind:"block", shape:"square", variant:"regenerative", hp, column, color };
     if (toolId === "phase") return { kind:"block", shape:"square", variant:"phase", phaseActive:true, hp, column, color };
-    if (toolId === "black_hole") return { kind:"block", shape:"square", variant:"black_hole", absorbingSides:["top"], hp, column, color };
+    if (toolId === "black_hole") return { kind:"block", shape:"square", variant:"black_hole", absorbingSides:blackHolePlacementSides(), hp, column, color };
     if (toolId === "plus_ball") return { kind:"pickup", type:"plus_ball", column };
     if (toolId === "ion_h") return { kind:"power", type:"ion", orientation:"horizontal", column };
     if (toolId === "ion_v") return { kind:"power", type:"ion", orientation:"vertical", column };
@@ -153,6 +159,14 @@
       image.alt = "";
       if (entity.kind === "power" && entity.type === "ion" && entity.orientation === "vertical") image.style.transform = "rotate(90deg)";
       visual.appendChild(image);
+    }
+
+    if (entity.kind === "block" && entity.variant === "black_hole") {
+      for (const side of entity.absorbingSides || []) {
+        const marker = document.createElement("i");
+        marker.className = `black-hole-side ${side}`;
+        visual.appendChild(marker);
+      }
     }
 
     if (entity.kind === "block") {
