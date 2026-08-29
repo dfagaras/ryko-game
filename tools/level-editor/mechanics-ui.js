@@ -13,29 +13,18 @@
     l.mechanics.launchers.forEach(x=>mark(x,GL[x.direction])); l.mechanics.switches.forEach(x=>mark(x,'S')); l.mechanics.portals.forEach(x=>mark(x,'◎'));
     l.mechanics.shields.forEach(x=>{const c=cell(x.column,x.row);if(c)x.sides.forEach(s=>{const d=document.createElement('div');d.className=`mechanic-shield ${s}`;c.append(d)})});
     if(l.mechanics.lasers.length){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','mechanic-laser-layer');svg.setAttribute('viewBox','0 0 1000 1000');svg.setAttribute('preserveAspectRatio','none');l.mechanics.lasers.forEach(x=>{const ln=document.createElementNS('http://www.w3.org/2000/svg','line');['x1','y1','x2','y2'].forEach((k,i)=>ln.setAttribute(k,String([x.from.x,x.from.y,x.to.x,x.to.y][i]*1000)));ln.setAttribute('class','mechanic-laser-line');svg.append(ln)});boardGrid.append(svg)}
+    bindBoardCells();
     lists(l);
   }
   function mark(x,t){const c=cell(x.column,x.row);if(!c)return;const d=document.createElement('div');d.className='mechanic-mark';d.textContent=t;c.append(d)}
   function lists(l){[['launcherList','launchers',x=>`${x.id} ${GL[x.direction]} C${x.column+1} R${x.row+1}`],['shieldList','shields',x=>`${x.id} [${x.sides.join(',')}] C${x.column+1} R${x.row+1}`],['switchList','switches',x=>`${x.id} → ${x.targetId} ${x.action}`],['portalList','portals',x=>`${x.id} ${x.pairId} C${x.column+1} R${x.row+1}`],['laserList','lasers',x=>`${x.id} ${x.onSeconds}s/${x.offSeconds}s`]].forEach(([host,key,label])=>{const h=$(host);h.innerHTML='';l.mechanics[key].forEach(x=>h.append(item(label(x),()=>{const f=read();f.mechanics[key]=f.mechanics[key].filter(y=>y.id!==x.id);save(f)})))})}
   document.querySelectorAll('[data-arm]').forEach(b=>b.onclick=()=>{setArmed(b.dataset.arm);render()});
 
-  function resolvePlacementCell(e){
-    const direct=e.target instanceof Element?e.target.closest('.board-cell'):null;
-    if(direct&&boardGrid.contains(direct))return direct;
-    if(typeof e.clientX!=='number'||typeof e.clientY!=='number')return null;
-    for(const candidate of boardGrid.querySelectorAll('.board-cell')){
-      const rect=candidate.getBoundingClientRect();
-      if(e.clientX>=rect.left&&e.clientX<=rect.right&&e.clientY>=rect.top&&e.clientY<=rect.bottom)return candidate;
-    }
-    return null;
-  }
-
-  function placeArmedMechanic(e){
-    if(!armed)return;
-    const c=resolvePlacementCell(e);if(!c)return;
-    const l=read(),board=M.boardForLevel(l),col=Number(c.dataset.column),row=Number(c.dataset.row);
+  function placeMechanicInCell(targetCell,event){
+    if(!armed||!targetCell||!boardGrid.contains(targetCell))return;
+    const l=read(),board=M.boardForLevel(l),col=Number(targetCell.dataset.column),row=Number(targetCell.dataset.row);
     if(!Number.isInteger(col)||!Number.isInteger(row)||col<0||col>=board.columns||row<0||row>=board.rows)return;
-    e.preventDefault();e.stopImmediatePropagation();
+    event?.preventDefault?.();event?.stopImmediatePropagation?.();
     if(armed.startsWith('launcher:')){
       l.mechanics.launchers=l.mechanics.launchers.filter(x=>!(x.column===col&&x.row===row));
       l.mechanics.launchers.push({id:next(l.mechanics.launchers,'launcher'),column:col,row,direction:armed.split(':')[1]});
@@ -54,7 +43,14 @@
     save(l);
   }
 
-  document.addEventListener('pointerdown',placeArmedMechanic,true);
+  function bindBoardCells(){
+    boardGrid.querySelectorAll('.board-cell').forEach(targetCell=>{
+      if(targetCell.dataset.mechanicPlacementBound==='1')return;
+      targetCell.dataset.mechanicPlacementBound='1';
+      targetCell.addEventListener('pointerdown',event=>placeMechanicInCell(targetCell,event),true);
+    });
+  }
+
   $('addLaser').onclick=()=>{const ids=['laserFromX','laserFromY','laserToX','laserToY','laserOnSeconds','laserOffSeconds','laserStartDelay'],v=ids.map(id=>+$(`${id}`).value);if(v.some(Number.isNaN)||v[0]<0||v[0]>1||v[1]<0||v[1]>1||v[2]<0||v[2]>1||v[3]<0||v[3]>1||v[4]<=0||v[5]<=0||v[6]<0)return alert('Invalid laser values.');const l=read();l.mechanics.lasers.push({id:next(l.mechanics.lasers,'laser'),from:{x:v[0],y:v[1]},to:{x:v[2],y:v[3]},onSeconds:v[4],offSeconds:v[5],startDelay:v[6],startsOn:$('laserStartsOn').value==='on'});save(l)};
   new MutationObserver(ms=>{if(ms.some(m=>[...m.addedNodes].some(n=>n instanceof Element&&(n.matches('.board-cell')||n.querySelector?.('.board-cell')))))queueMicrotask(render)}).observe(boardGrid,{childList:true,subtree:true}); render();
 })();
