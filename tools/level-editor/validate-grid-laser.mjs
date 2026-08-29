@@ -39,5 +39,9 @@ for (const id of ["laserFromColumn", "laserFromRow", "laserToColumn", "laserToRo
 assert(!ui.includes('id="laserFromX"'), "Old normalized From X input must not remain in the editor UI.");
 assert(!ui.includes('id="laserFromY"'), "Old normalized From Y input must not remain in the editor UI.");
 assert(ui.includes("M.laserPointForCell"), "Laser creation must convert grid cells through the shared geometry helper.");
+assert(ui.includes("function laserPreviewPoint"), "Laser preview must convert runtime-normalized coordinates back into grid-relative coordinates.");
+assert(ui.includes("(logicalX-board.gridX)/board.gridWidth"), "Laser preview X must be relative to the rendered grid, not the runtime board canvas.");
+assert(ui.includes("(logicalY-board.gridY)/board.gridHeight"), "Laser preview Y must be relative to the rendered grid, not the runtime board canvas.");
+assert(!ui.includes("[x.from.x,x.from.y,x.to.x,x.to.y][i]*1000"), "Laser preview must not draw runtime-normalized coordinates directly inside boardGrid.");
 
-console.log("Grid laser checks passed: adjacent cells map to exact board row/column steps while export remains normalized.");
+console.log("Grid laser checks passed: adjacent cells map to exact board steps and preview aligns to the rendered grid.");
