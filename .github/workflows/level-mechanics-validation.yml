@@ -8,12 +8,13 @@ on:
     paths:
       - "tools/level-editor/mechanics-*.js"
       - "tools/level-editor/editor.js"
+      - "tools/level-editor/editor-extras.js"
       - "tools/level-editor/styles.css"
       - "tools/level-editor/index.html"
       - "tools/level-editor/validate-mechanics.mjs"
       - "tools/level-editor/validate-editor-interactions.mjs"
-      - "tools/level-editor/validate-last-row-interaction.mjs"
       - "scripts/level_mechanics_test_entry.gd"
+      - "scripts/level_top_row_mechanics_test_entry.gd"
       - "scenes/level_test.tscn"
       - ".github/workflows/level-mechanics-validation.yml"
   workflow_dispatch:
@@ -31,14 +32,13 @@ jobs:
         run: |
           set -euo pipefail
           node --check tools/level-editor/editor.js
+          node --check tools/level-editor/editor-extras.js
           node --check tools/level-editor/mechanics-model.js
           node --check tools/level-editor/mechanics-ui.js
           node --check tools/level-editor/validate-mechanics.mjs
           node --check tools/level-editor/validate-editor-interactions.mjs
-          node --check tools/level-editor/validate-last-row-interaction.mjs
           node tools/level-editor/validate-mechanics.mjs
           node tools/level-editor/validate-editor-interactions.mjs
-          node tools/level-editor/validate-last-row-interaction.mjs
       - name: Validate mechanics GDScript parses
         shell: bash
         run: |
