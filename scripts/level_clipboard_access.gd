@@ -15,6 +15,7 @@ const CLIPBOARD_BALL_MIN := 0.20
 const CLIPBOARD_BALL_MAX := 3.00
 const CORE_BALL_MIN := 0.65
 const CORE_BALL_MAX := 1.35
+const CLIPBOARD_DIAGNOSTIC_EDGE := 32
 
 
 func _draw_levels_overlay() -> void:
@@ -54,7 +55,7 @@ func _paste_level_from_clipboard() -> void:
 	var json_error := json.parse(raw_text)
 	if json_error != OK:
 		import_status = "NOT JSON // LINE %d" % json.get_error_line()
-		push_error("RYKO clipboard JSON parse failed at line %d: %s" % [json.get_error_line(), json.get_error_message()])
+		_log_clipboard_parse_diagnostic(raw_text, json)
 		queue_redraw()
 		return
 	if typeof(json.data) != TYPE_DICTIONARY:
@@ -97,6 +98,26 @@ func _paste_level_from_clipboard() -> void:
 	import_status = "PASTED %s" % level_id.to_upper()
 	print("RYKO clipboard level saved: %s" % destination)
 	queue_redraw()
+
+
+func _log_clipboard_parse_diagnostic(raw_text: String, json: JSON) -> void:
+	var text_length := raw_text.length()
+	var edge_length := mini(CLIPBOARD_DIAGNOSTIC_EDGE, text_length)
+	var head := raw_text.substr(0, edge_length).c_escape()
+	var tail := raw_text.substr(maxi(0, text_length - edge_length), edge_length).c_escape()
+	var first_code := raw_text.unicode_at(0) if text_length > 0 else -1
+	var last_code := raw_text.unicode_at(text_length - 1) if text_length > 0 else -1
+	push_error(
+		"RYKO clipboard JSON parse failed at line %d: %s | length=%d first_code=%d last_code=%d head='%s' tail='%s'" % [
+			json.get_error_line(),
+			json.get_error_message(),
+			text_length,
+			first_code,
+			last_code,
+			head,
+			tail,
+		]
+	)
 
 
 func _validate_editor_level(raw: Dictionary) -> Dictionary:
