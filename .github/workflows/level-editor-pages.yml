@@ -44,12 +44,14 @@ jobs:
           node --check tools/level-editor/mission-block-ui.js
           node --check tools/level-editor/mechanics-ui.js
           node --check tools/level-editor/validate-editor-interactions.mjs
+          node --check tools/level-editor/validate-grid-laser.mjs
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
           node tools/level-editor/validate-top-row-bounds.mjs
           node tools/level-editor/validate-mission-core.mjs
           node tools/level-editor/validate-mechanics.mjs
           node tools/level-editor/validate-editor-interactions.mjs
+          node tools/level-editor/validate-grid-laser.mjs
 
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/develop'
