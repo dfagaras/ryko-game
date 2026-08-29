@@ -19,6 +19,7 @@
   function mark(x,t){const c=cell(x.column,x.row);if(!c)return;const d=document.createElement('div');d.className='mechanic-mark';d.textContent=t;c.append(d)}
   function lists(l){[['launcherList','launchers',x=>`${x.id} ${GL[x.direction]} C${x.column+1} ${x.row===-1?'TOP':`R${x.row+1}`}`],['shieldList','shields',x=>`${x.id} [${x.sides.join(',')}] C${x.column+1} R${x.row+1}`],['switchList','switches',x=>`${x.id} → ${x.targetId} ${x.action}`],['portalList','portals',x=>`${x.id} ${x.pairId} C${x.column+1} R${x.row+1}`],['laserList','lasers',x=>`${x.id} ${x.onSeconds}s/${x.offSeconds}s`]].forEach(([host,key,label])=>{const h=$(host);h.innerHTML='';l.mechanics[key].forEach(x=>h.append(item(label(x),()=>{const f=read();f.mechanics[key]=f.mechanics[key].filter(y=>y.id!==x.id);save(f)})))})}
   document.querySelectorAll('[data-arm]').forEach(b=>b.onclick=()=>{armed=b.dataset.arm;sessionStorage.setItem(ARMED_KEY,armed);render()});
+  toolbox.addEventListener('click',event=>{if(!event.target.closest('.tool'))return;armed=null;sessionStorage.removeItem(ARMED_KEY);queueMicrotask(render)},true);
 
   function resolvePlacementCell(e){
     const direct=e.target instanceof Element?e.target.closest('.board-cell'):null;
