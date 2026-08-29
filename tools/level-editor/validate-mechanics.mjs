@@ -29,7 +29,7 @@ const custom = M.normalizeLevel({
   boardColumns: 10,
   boardRows: 13,
   board: M.boardForDimensions(10, 13),
-  initialBoard: [],
+  initialBoard: [{ kind: "block", shape: "square", variant: "normal", hp: 10, column: 0, row: 0 }],
   incomingRows: [],
   mechanics: {
     launchers: [{ id: "launcher_last_row", column: 9, row: 12, direction: "down_left" }],
