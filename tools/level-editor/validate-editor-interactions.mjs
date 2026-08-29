@@ -17,9 +17,10 @@ requireText(editor, 'entity.absorbingSides = blackHolePlacementSides();', "Black
 requireText(mechanics, "M.boardForLevel(l)", "Mechanic placement does not validate against the active custom board dimensions.");
 requireText(mechanics, "row>=board.rows", "Mechanic placement is missing the active-board row bound check.");
 requireText(mechanics, "function bindBoardCells()", "Mechanic placement must bind directly to each rendered board cell.");
-requireText(mechanics, "targetCell.addEventListener('pointerdown'", "Every rendered board cell must receive a direct pointerdown mechanic handler.");
+requireText(mechanics, "targetCell.addEventListener('click'", "Every rendered board cell must receive a direct capture-phase click mechanic handler.");
 requireText(mechanics, "placeMechanicInCell(targetCell,event)", "Cell-bound handler must place the mechanic using that exact cell.");
-if (mechanics.includes("document.addEventListener('pointerdown',placeArmedMechanic,true)")) throw new Error("Global document-level mechanic placement must not be used anymore.");
+requireText(mechanics, "stopImmediatePropagation", "Mechanic click handling must stop the core editor cell click from overwriting the saved mechanic.");
+if (mechanics.includes("targetCell.addEventListener('pointerdown'")) throw new Error("Mechanic placement must not save on pointerdown because the later core click can overwrite the mechanic state.");
 requireText(styles, ".launch-line", "Launch line styles are missing.");
 requireText(styles, "pointer-events: none", "Launch line must not intercept pointer input from the final row.");
 requireText(mechanics, "l.mechanics.launchers=l.mechanics.launchers.filter", "Launcher placement should replace an existing launcher in the same cell.");
@@ -27,4 +28,4 @@ requireText(mechanics, 'ARMED_KEY="ryko-mechanic-armed"', "Mechanic armed state 
 requireText(mechanics, "sessionStorage.getItem(ARMED_KEY)", "Armed launcher direction must be restored after editor reload.");
 requireText(mechanics, "sessionStorage.setItem(ARMED_KEY,armed)", "Armed launcher direction must be saved before editor reload.");
 
-console.log("Editor interaction regression checks passed: Black Hole sides are core-owned; every board cell has the same direct mechanic placement path; and armed launcher state survives reloads.");
+console.log("Editor interaction regression checks passed: mechanics own the capture-phase cell click, core cell clicks cannot overwrite placement, and armed launcher state survives reloads.");
