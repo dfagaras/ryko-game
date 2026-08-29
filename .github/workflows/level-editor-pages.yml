@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - "feature/**"
     paths:
       - "tools/level-editor/**"
       - "assets/icons/**"
@@ -17,14 +18,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "ryko-level-editor-pages"
+  group: "ryko-level-editor-pages-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
   validate-and-build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out develop
+      - name: Check out branch
         uses: actions/checkout@v6
 
       - name: Validate editor JavaScript and JSON model
@@ -51,6 +52,7 @@ jobs:
           node tools/level-editor/validate-editor-interactions.mjs
 
       - name: Configure GitHub Pages
+        if: github.ref == 'refs/heads/develop'
         uses: actions/configure-pages@v5
 
       - name: Build Pages artifact
@@ -97,12 +99,22 @@ jobs:
             exit 1
           fi
 
+      - name: Upload feature artifact
+        if: github.ref != 'refs/heads/develop'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryko-level-editor-site
+          path: ${{ runner.temp }}/ryko-level-editor-site
+          retention-days: 1
+
       - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/develop'
         uses: actions/upload-pages-artifact@v4
         with:
           path: ${{ runner.temp }}/ryko-level-editor-site
 
   deploy:
+    if: github.ref == 'refs/heads/develop'
     needs: validate-and-build
     runs-on: ubuntu-latest
     environment:
