@@ -70,7 +70,7 @@
         durationSeconds: Math.max(0, Number(item?.durationSeconds) || 0)
       })),
       portals: portals.map((item, index) => ({
-        id: String(item?.id || `portal_${Math.floor(index / 2) + 1}`), pairId: String(item?.pairId || `pair_${Math.floor(index / 2) + 1}`), ...boardPosition(item, board)
+        id: String(item?.id || `portal_${index + 1}`), pairId: String(item?.pairId || `pair_${Math.floor(index / 2) + 1}`), ...boardPosition(item, board)
       }))
     };
   }
