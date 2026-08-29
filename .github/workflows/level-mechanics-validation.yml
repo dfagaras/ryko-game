@@ -9,6 +9,7 @@ on:
       - "tools/level-editor/mechanics-*.js"
       - "tools/level-editor/validate-mechanics.mjs"
       - "scripts/level_mechanics_test_entry.gd"
+      - "scripts/level_portal_fix_entry.gd"
       - "scenes/level_test.tscn"
       - ".github/workflows/level-mechanics-validation.yml"
   workflow_dispatch:
