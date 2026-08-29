@@ -54,7 +54,7 @@
     save(l);
   }
 
-  document.addEventListener('click',placeArmedMechanic,true);
+  document.addEventListener('pointerdown',placeArmedMechanic,true);
   $('addLaser').onclick=()=>{const ids=['laserFromX','laserFromY','laserToX','laserToY','laserOnSeconds','laserOffSeconds','laserStartDelay'],v=ids.map(id=>+$(`${id}`).value);if(v.some(Number.isNaN)||v[0]<0||v[0]>1||v[1]<0||v[1]>1||v[2]<0||v[2]>1||v[3]<0||v[3]>1||v[4]<=0||v[5]<=0||v[6]<0)return alert('Invalid laser values.');const l=read();l.mechanics.lasers.push({id:next(l.mechanics.lasers,'laser'),from:{x:v[0],y:v[1]},to:{x:v[2],y:v[3]},onSeconds:v[4],offSeconds:v[5],startDelay:v[6],startsOn:$('laserStartsOn').value==='on'});save(l)};
   new MutationObserver(ms=>{if(ms.some(m=>[...m.addedNodes].some(n=>n instanceof Element&&(n.matches('.board-cell')||n.querySelector?.('.board-cell')))))queueMicrotask(render)}).observe(boardGrid,{childList:true,subtree:true}); render();
 })();
