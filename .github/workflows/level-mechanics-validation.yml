@@ -17,6 +17,7 @@ on:
       - "tools/level-editor/validate-grid-laser.mjs"
       - "scripts/level_mechanics_test_entry.gd"
       - "scripts/level_top_row_mechanics_test_entry.gd"
+      - "scripts/level_authored_laser_geometry_entry.gd"
       - "scenes/level_test.tscn"
       - ".github/workflows/level-mechanics-validation.yml"
   workflow_dispatch:
