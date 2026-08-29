@@ -23,4 +23,25 @@ for (let index = 0; index < M.MECHANIC_DIRECTIONS.length; index += 1) {
   if (exported.mechanics.launchers[index].direction !== M.MECHANIC_DIRECTIONS[index]) throw new Error(`Launcher direction ${M.MECHANIC_DIRECTIONS[index]} was not preserved.`);
 }
 if (exported.mechanics.lasers[0].to.x !== 1) throw new Error("Laser endpoint was not preserved.");
-console.log("Mechanics model validation passed: one selected direction per launcher, 8 available options, laser timing preserved.");
+
+const custom = M.normalizeLevel({
+  ...M.createDefaultLevel(),
+  boardColumns: 10,
+  boardRows: 13,
+  board: M.boardForDimensions(10, 13),
+  initialBoard: [],
+  incomingRows: [],
+  mechanics: {
+    launchers: [{ id: "launcher_last_row", column: 9, row: 12, direction: "down_left" }],
+    lasers: [], shields: [], switches: [], portals: []
+  }
+});
+const customValidation = M.validateLevel(custom);
+if (!customValidation.valid) throw new Error(`Expected 10x13 last-row launcher to be valid: ${customValidation.errors.join("; ")}`);
+const customExport = JSON.parse(M.toExportJson(custom));
+const lastRowLauncher = customExport.mechanics.launchers.find((item) => item.id === "launcher_last_row");
+if (!lastRowLauncher || lastRowLauncher.column !== 9 || lastRowLauncher.row !== 12 || lastRowLauncher.direction !== "down_left") {
+  throw new Error("10x13 launcher on row 13 was not preserved exactly.");
+}
+
+console.log("Mechanics validation passed: 8 launcher directions, laser timing, and 10x13 row-13 launcher placement are preserved.");
