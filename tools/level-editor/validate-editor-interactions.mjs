@@ -20,5 +20,11 @@ requireText(mechanicsModel, "Number(item?.row) === -1 ? -1", "Mechanics model do
 requireText(mechanicsUi, "isTop?-1:Number(c.dataset.row)", "Launcher UI does not map the top playable row to row -1.");
 requireText(mechanicsUi, "document.addEventListener('click',placeArmedMechanic,true)", "Mechanic placement must own the click before the top-row editor handler.");
 requireText(mechanicsUi, "x.row===-1?'TOP'", "Top-row launchers are not labelled distinctly in the launcher list.");
+requireText(mechanicsUi, 'ARMED_KEY="ryko-mechanic-armed"', "Selected mechanic must persist across editor reloads.");
+requireText(mechanicsUi, 'SCROLL_KEY="ryko-editor-scroll-y"', "Editor scroll position must persist across mechanic reloads.");
+requireText(mechanicsUi, "sessionStorage.setItem(SCROLL_KEY,String(window.scrollY))", "Mechanic placement does not save the current scroll position.");
+requireText(mechanicsUi, "window.scrollTo(0,savedScroll)", "Mechanic placement does not restore the editor scroll position after reload.");
+requireText(mechanicsUi, "l.topRow=[]", "Clear Board does not clear the separate top row.");
+requireText(mechanicsUi, "l.mechanics={launchers:[],lasers:[],shields:[],switches:[],portals:[]}", "Clear Board does not clear authored mechanics.");
 
-console.log("Editor interaction checks passed: launcher supports TOP row and Black Hole side selection is shared by normal and top rows.");
+console.log("Editor interaction checks passed: TOP row launcher, Black Hole sides, complete Clear Board, and continuous mechanic placement are preserved.");
