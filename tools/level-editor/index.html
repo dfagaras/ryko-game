@@ -42,6 +42,16 @@
       <div class="panel-title">Tools</div>
       <label class="field compact">Default block HP<input id="defaultHp" type="number" min="1" value="10" /></label>
       <div id="toolbox" class="toolbox"></div>
+      <div id="blackHolePlacementFields" class="black-hole-placement-config" hidden>
+        <div class="selection-name">BLACK HOLE ABSORBING SIDES</div>
+        <div class="check-grid">
+          <label><input type="checkbox" value="top" checked />Top</label>
+          <label><input type="checkbox" value="right" />Right</label>
+          <label><input type="checkbox" value="bottom" />Bottom</label>
+          <label><input type="checkbox" value="left" />Left</label>
+        </div>
+        <div class="muted-copy">Choose one or more sides, then place the Black Hole.</div>
+      </div>
 
       <div class="section-rule"></div>
       <div class="panel-title">Selected cell</div>
@@ -139,6 +149,5 @@
   <script src="editor-extras.js"></script>
   <script src="mission-block-ui.js"></script>
   <script src="mechanics-ui.js"></script>
-  <script src="editor-interaction-fixes.js"></script>
 </body>
 </html>
