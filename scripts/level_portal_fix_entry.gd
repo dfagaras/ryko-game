@@ -44,9 +44,8 @@ func _process_portals() -> void:
 			var exit_center: Vector2 = exit_portal["position"]
 			body.position = exit_center + direction * (trigger_radius + 2.0)
 
-			# Critical: teleportation is discontinuous movement. Downstream mechanics
-			# (especially lasers) must not interpret the line between entry and exit as
-			# a real ball path, otherwise a laser between portals destroys the ball.
+			# Teleportation is discontinuous movement. Downstream mechanics,
+			# especially lasers, must start their path check from the exit point.
 			mechanic_previous_ball_positions[ball_id] = body.position
 			portal_ball_cooldowns[ball_id] = 0.12
 			break
