@@ -20,6 +20,10 @@
     column: Math.min(board.columns - 1, Math.max(0, Math.trunc(Number(item?.column) || 0))),
     row: Math.min(board.rows - 1, Math.max(0, Math.trunc(Number(item?.row) || 0)))
   });
+  const launcherPosition = (item, board) => ({
+    column: Math.min(board.columns - 1, Math.max(0, Math.trunc(Number(item?.column) || 0))),
+    row: Number(item?.row) === -1 ? -1 : Math.min(board.rows - 1, Math.max(0, Math.trunc(Number(item?.row) || 0)))
+  });
 
   function normalizeMechanics(raw, level) {
     const source = raw && typeof raw === "object" ? raw : {};
@@ -31,7 +35,7 @@
     const portals = Array.isArray(source.portals) ? source.portals : [];
 
     return {
-      launchers: launchers.map((item, index) => ({ id: String(item?.id || `launcher_${index + 1}`), ...boardPosition(item, board), direction: DIRECTION_SET.has(item?.direction) ? item.direction : "up" })),
+      launchers: launchers.map((item, index) => ({ id: String(item?.id || `launcher_${index + 1}`), ...launcherPosition(item, board), direction: DIRECTION_SET.has(item?.direction) ? item.direction : "up" })),
       lasers: lasers.map((item, index) => ({
         id: String(item?.id || `laser_${index + 1}`),
         from: { x: clamp01(item?.from?.x), y: clamp01(item?.from?.y) }, to: { x: clamp01(item?.to?.x ?? 1), y: clamp01(item?.to?.y) },
@@ -68,7 +72,10 @@
     const ids = new Set();
     const all = [...result.level.mechanics.launchers, ...result.level.mechanics.lasers, ...result.level.mechanics.shields, ...result.level.mechanics.switches, ...result.level.mechanics.portals];
     for (const item of all) { if (ids.has(item.id)) result.errors.push(`Duplicate mechanic id: ${item.id}.`); ids.add(item.id); }
-    for (const launcher of result.level.mechanics.launchers) if (!DIRECTION_SET.has(launcher.direction)) result.errors.push(`Launcher ${launcher.id}: invalid direction.`);
+    for (const launcher of result.level.mechanics.launchers) {
+      if (!DIRECTION_SET.has(launcher.direction)) result.errors.push(`Launcher ${launcher.id}: invalid direction.`);
+      if (launcher.column < 0 || launcher.column >= board.columns || launcher.row < -1 || launcher.row >= board.rows) result.errors.push(`${launcher.id}: position is outside the board.`);
+    }
     for (const laser of result.level.mechanics.lasers) {
       if (laser.onSeconds <= 0 || laser.offSeconds <= 0) result.errors.push(`Laser ${laser.id}: ON and OFF durations must be greater than 0.`);
       if (laser.from.x === laser.to.x && laser.from.y === laser.to.y) result.errors.push(`Laser ${laser.id}: endpoints must be different.`);
@@ -79,7 +86,7 @@
     const pairCounts = new Map();
     for (const portal of result.level.mechanics.portals) pairCounts.set(portal.pairId, (pairCounts.get(portal.pairId) || 0) + 1);
     for (const [pairId, count] of pairCounts) if (count !== 2) result.errors.push(`Portal pair ${pairId}: exactly 2 portals are required.`);
-    for (const item of [...result.level.mechanics.launchers, ...result.level.mechanics.shields, ...result.level.mechanics.switches, ...result.level.mechanics.portals]) {
+    for (const item of [...result.level.mechanics.shields, ...result.level.mechanics.switches, ...result.level.mechanics.portals]) {
       if (item.column < 0 || item.column >= board.columns || item.row < 0 || item.row >= board.rows) result.errors.push(`${item.id}: position is outside the board.`);
     }
     result.valid = result.errors.length === 0;
