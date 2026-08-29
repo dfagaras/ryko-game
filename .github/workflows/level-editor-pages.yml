@@ -42,12 +42,13 @@ jobs:
           node --check tools/level-editor/editor-extras.js
           node --check tools/level-editor/mission-block-ui.js
           node --check tools/level-editor/mechanics-ui.js
-          node --check tools/level-editor/editor-interaction-fixes.js
+          node --check tools/level-editor/validate-editor-interactions.mjs
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
           node tools/level-editor/validate-top-row-bounds.mjs
           node tools/level-editor/validate-mission-core.mjs
           node tools/level-editor/validate-mechanics.mjs
+          node tools/level-editor/validate-editor-interactions.mjs
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -71,7 +72,6 @@ jobs:
           cp tools/level-editor/editor-extras.js "$site/editor-extras.js"
           cp tools/level-editor/mission-block-ui.js "$site/mission-block-ui.js"
           cp tools/level-editor/mechanics-ui.js "$site/mechanics-ui.js"
-          cp tools/level-editor/editor-interaction-fixes.js "$site/editor-interaction-fixes.js"
           touch "$site/.nojekyll"
           cp assets/icons/block_black_hole.png "$site/assets/icons/"
           cp assets/icons/block_dense.png "$site/assets/icons/"
@@ -86,13 +86,16 @@ jobs:
           test -s "$site/mission-block-ui.js"
           test -s "$site/mechanics-model.js"
           test -s "$site/mechanics-ui.js"
-          test -s "$site/editor-interaction-fixes.js"
+          test -s "$site/editor.js"
           test -s "$site/assets/ui/mission_block/rama (3).png"
           grep -q 'mission-block-model.js' "$site/index.html"
           grep -q 'mission-block-ui.js' "$site/index.html"
           grep -q 'mechanics-model.js' "$site/index.html"
           grep -q 'mechanics-ui.js' "$site/index.html"
-          grep -q 'editor-interaction-fixes.js' "$site/index.html"
+          if grep -q 'editor-interaction-fixes.js' "$site/index.html"; then
+            echo "Obsolete interaction patch is still referenced by index.html"
+            exit 1
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
