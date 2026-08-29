@@ -47,7 +47,7 @@
     boardGrid.querySelectorAll('.board-cell').forEach(targetCell=>{
       if(targetCell.dataset.mechanicPlacementBound==='1')return;
       targetCell.dataset.mechanicPlacementBound='1';
-      targetCell.addEventListener('pointerdown',event=>placeMechanicInCell(targetCell,event),true);
+      targetCell.addEventListener('click',event=>placeMechanicInCell(targetCell,event),true);
     });
   }
 
