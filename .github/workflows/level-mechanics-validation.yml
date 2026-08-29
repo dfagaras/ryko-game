@@ -13,6 +13,7 @@ on:
       - "tools/level-editor/index.html"
       - "tools/level-editor/validate-mechanics.mjs"
       - "tools/level-editor/validate-editor-interactions.mjs"
+      - "tools/level-editor/validate-tool-switching.mjs"
       - "scripts/level_mechanics_test_entry.gd"
       - "scripts/level_top_row_mechanics_test_entry.gd"
       - "scenes/level_test.tscn"
@@ -37,8 +38,10 @@ jobs:
           node --check tools/level-editor/mechanics-ui.js
           node --check tools/level-editor/validate-mechanics.mjs
           node --check tools/level-editor/validate-editor-interactions.mjs
+          node --check tools/level-editor/validate-tool-switching.mjs
           node tools/level-editor/validate-mechanics.mjs
           node tools/level-editor/validate-editor-interactions.mjs
+          node tools/level-editor/validate-tool-switching.mjs
       - name: Validate mechanics GDScript parses
         shell: bash
         run: |
