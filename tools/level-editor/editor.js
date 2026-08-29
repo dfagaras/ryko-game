@@ -25,7 +25,7 @@
 
   const els = Object.fromEntries([
     "levelId", "levelName", "modeSelect", "startingBalls", "moveLimit", "moveLimitField", "modeNote", "defaultHp",
-    "toolbox", "boardGrid", "boardTitle", "clearBoardButton", "previewButton", "resetPreviewButton", "boardStatus",
+    "toolbox", "blackHolePlacementFields", "boardGrid", "boardTitle", "clearBoardButton", "previewButton", "resetPreviewButton", "boardStatus",
     "timelineCard", "timelineTabs", "addIncomingButton", "incomingEditor", "incomingEditorLabel", "removeIncomingButton",
     "incomingStrip", "incomingSlotLabel", "selectionEmpty", "selectionEditor", "selectionName", "hpField", "selectedHp",
     "blackHoleFields", "deleteSelectedButton", "validationSummary", "validationList", "jsonPreview", "loseContract",
@@ -64,6 +64,12 @@
     showToast.timer = setTimeout(() => els.toast.classList.remove("show"), 1600);
   }
 
+  function blackHolePlacementSides() {
+    if (!els.blackHolePlacementFields) return ["top"];
+    const sides = [...els.blackHolePlacementFields.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value);
+    return sides.length ? sides : ["top"];
+  }
+
   function buildToolbox() {
     els.toolbox.innerHTML = "";
     for (const tool of TOOLS) {
@@ -99,6 +105,7 @@
       });
       els.toolbox.appendChild(button);
     }
+    if (els.blackHolePlacementFields) els.blackHolePlacementFields.hidden = activeTool !== "black_hole";
   }
 
   function makeEntityElement(entity, tiny = false) {
@@ -270,7 +277,7 @@
         row
       };
       if (tool.shape === "triangle") entity.orientation = tool.orientation;
-      if (tool.variant === "black_hole") entity.absorbingSides = ["top"];
+      if (tool.variant === "black_hole") entity.absorbingSides = blackHolePlacementSides();
       if (tool.variant === "phase") entity.phaseActive = true;
       return entity;
     }
