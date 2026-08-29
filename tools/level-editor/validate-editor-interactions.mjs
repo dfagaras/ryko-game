@@ -21,5 +21,8 @@ requireText(mechanics, "getBoundingClientRect()", "Mechanic placement must resol
 requireText(styles, ".launch-line", "Launch line styles are missing.");
 requireText(styles, "pointer-events: none", "Launch line must not intercept pointer input from the final row.");
 requireText(mechanics, "l.mechanics.launchers=l.mechanics.launchers.filter", "Launcher placement should replace an existing launcher in the same cell.");
+requireText(mechanics, 'ARMED_KEY="ryko-mechanic-armed"', "Mechanic armed state must have a persistent session key.");
+requireText(mechanics, "sessionStorage.getItem(ARMED_KEY)", "Armed launcher direction must be restored after editor reload.");
+requireText(mechanics, "sessionStorage.setItem(ARMED_KEY,armed)", "Armed launcher direction must be saved before editor reload.");
 
-console.log("Editor interaction regression checks passed: Black Hole sides are core-owned and custom-grid launcher placement uses pointerdown, geometric hit testing, and a non-interactive launch line.");
+console.log("Editor interaction regression checks passed: Black Hole sides are core-owned; custom-grid launcher placement uses pointerdown/geometric hit testing; and armed launcher state survives reloads.");
