@@ -47,6 +47,35 @@
     };
   }
 
+  function nearestGridLine(logicalValue, start, step, end, count) {
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    for (let index = 0; index <= count; index++) {
+      const gridValue = index === count ? end : start + index * step;
+      const distance = Math.abs(logicalValue - gridValue);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    }
+    return bestIndex;
+  }
+
+  function snapLaserPointToGridLine(level, rawPoint, fallbackX, fallbackY) {
+    const board = M.boardForLevel(level || {});
+    const laserWidth = board.boardRight - board.boardLeft;
+    const laserHeight = board.launchLineY - board.boardTop;
+    if (!(laserWidth > 0) || !(laserHeight > 0)) return { x: clamp01(fallbackX), y: clamp01(fallbackY) };
+
+    const normalizedX = clamp01(rawPoint?.x ?? fallbackX);
+    const normalizedY = clamp01(rawPoint?.y ?? fallbackY);
+    const logicalX = board.boardLeft + normalizedX * laserWidth;
+    const logicalY = board.boardTop + normalizedY * laserHeight;
+    const columnLine = nearestGridLine(logicalX, board.gridX, board.columnStep, board.gridX + board.gridWidth, board.columns);
+    const rowLine = nearestGridLine(logicalY, board.gridY, board.rowStep, board.gridY + board.gridHeight, board.rows);
+    return laserPointForGridLine(level, columnLine, rowLine) || { x: normalizedX, y: normalizedY };
+  }
+
   function normalizeMechanics(raw, level) {
     const source = raw && typeof raw === "object" ? raw : {};
     const board = M.boardForLevel(level || {});
@@ -60,7 +89,8 @@
       launchers: launchers.map((item, index) => ({ id: String(item?.id || `launcher_${index + 1}`), ...launcherPosition(item, board), direction: DIRECTION_SET.has(item?.direction) ? item.direction : "up" })),
       lasers: lasers.map((item, index) => ({
         id: String(item?.id || `laser_${index + 1}`),
-        from: { x: clamp01(item?.from?.x), y: clamp01(item?.from?.y) }, to: { x: clamp01(item?.to?.x ?? 1), y: clamp01(item?.to?.y) },
+        from: snapLaserPointToGridLine(level, item?.from, 0, 0),
+        to: snapLaserPointToGridLine(level, item?.to, 1, 0),
         onSeconds: positiveSeconds(item?.onSeconds, 1.5), offSeconds: positiveSeconds(item?.offSeconds, 1.0),
         startDelay: Math.max(0, Number(item?.startDelay) || 0), startsOn: item?.startsOn !== false
       })),
@@ -120,5 +150,6 @@
   M.MECHANIC_SIDES = SIDES;
   M.normalizeMechanics = normalizeMechanics;
   M.laserPointForGridLine = laserPointForGridLine;
+  M.snapLaserPointToGridLine = snapLaserPointToGridLine;
   M.__mechanicsExtended = true;
 })();
