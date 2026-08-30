@@ -2,7 +2,14 @@ import fs from "node:fs";
 import vm from "node:vm";
 
 const read = (name) => fs.readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
-const sandbox = { window: {}, console };
+const storage = new Map();
+const localStorage = {
+  getItem: (key) => storage.has(key) ? storage.get(key) : null,
+  setItem: (key, value) => storage.set(key, String(value)),
+  removeItem: (key) => storage.delete(key)
+};
+const sandbox = { window: {}, console, localStorage };
+sandbox.window.localStorage = localStorage;
 vm.createContext(sandbox);
 for (const file of ["model.js", "mechanics-model.js", "ball-range-extension.js", "block-color-model.js", "mission-block-model.js", "multicell-block-model.js"]) {
   vm.runInContext(read(file), sandbox);
