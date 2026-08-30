@@ -6,6 +6,7 @@
 
   const STORAGE_KEY = "ryko-level-editor-v1";
   const ARMED_KEY = "ryko-mechanic-armed";
+  const ACTIVE_ROW_KEY = "ryko-descending-active-row";
   const MISSION_TOOL = "mission_core";
   const GL = {up:"↑",up_right:"↗",right:"→",down_right:"↘",down:"↓",down_left:"↙",left:"←",up_left:"↖"};
 
@@ -26,15 +27,29 @@
     catch { return M.createDefaultLevel(); }
   }
 
-  function saveLevel(level) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(M.normalizeLevel(level)));
-    location.reload();
-  }
-
   function activeIncomingIndex() {
     const tabs = [...document.querySelectorAll("#timelineTabs .timeline-tab")];
     const active = tabs.findIndex((tab) => tab.classList.contains("active"));
     return active >= 0 ? active : 0;
+  }
+
+  function saveLevel(level) {
+    sessionStorage.setItem(ACTIVE_ROW_KEY, String(activeIncomingIndex()));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(M.normalizeLevel(level)));
+    location.reload();
+  }
+
+  function restoreActiveIncomingRow() {
+    const raw = sessionStorage.getItem(ACTIVE_ROW_KEY);
+    if (raw === null) return;
+    const rowIndex = Number.parseInt(raw, 10);
+    const tabs = [...document.querySelectorAll("#timelineTabs .timeline-tab")];
+    if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= tabs.length) {
+      sessionStorage.removeItem(ACTIVE_ROW_KEY);
+      return;
+    }
+    sessionStorage.removeItem(ACTIVE_ROW_KEY);
+    if (!tabs[rowIndex].classList.contains("active")) tabs[rowIndex].click();
   }
 
   function incomingColumn(cell) {
@@ -238,5 +253,9 @@
       refreshSoon();
     }
   }).observe(launcherList, { childList:true });
-  refreshSoon();
+
+  queueMicrotask(() => {
+    restoreActiveIncomingRow();
+    refreshSoon();
+  });
 })();
