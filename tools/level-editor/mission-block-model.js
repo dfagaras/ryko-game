@@ -49,6 +49,9 @@
   function missionCount(level) {
     let count = (level.initialBoard || []).filter((entity) => entity?.kind === "block" && entity?.variant === MISSION_VARIANT).length;
     count += (level.topRow || []).filter((entity) => entity?.kind === "block" && entity?.variant === MISSION_VARIANT).length;
+    for (const row of level.incomingRows || []) {
+      count += (row?.cells || []).filter((entity) => entity?.kind === "block" && entity?.variant === MISSION_VARIANT).length;
+    }
     return count;
   }
 
@@ -69,16 +72,13 @@
     const base = baseValidateLevel(input);
     const normalized = M.normalizeLevel(input || {});
     const errors = [...base.errors];
-    const warnings = [...base.warnings];
+    const warnings = [...base.warnings].filter((message) => !/Mission Core objective\(s\)/i.test(String(message)));
     const triangleMissionCount = rawTriangleMissionCount(input || {});
     if (triangleMissionCount > 0) errors.push("Mission Core is square-only; triangles cannot be mission objectives.");
-    if ((normalized.incomingRows || []).some((row) => (row.cells || []).some((entity) => entity.variant === MISSION_VARIANT))) {
-      errors.push("Mission Core must start on the authored board or top row; incoming mission objectives are not supported yet.");
-    }
     if (normalized.rules?.winCondition === MISSION_WIN && missionCount(normalized) === 0) {
       errors.push("Mission objective levels need at least one Mission Core block.");
     }
-    if (missionCount(normalized) > 0) warnings.push(`${missionCount(normalized)} Mission Core objective(s): the level clears when all objectives are destroyed.`);
+    if (missionCount(normalized) > 0) warnings.push(`${missionCount(normalized)} Mission Core objective(s): the level clears when all objectives are destroyed, including authored future rows.`);
     return { level: normalized, errors, warnings, valid: errors.length === 0 };
   };
   M.toExportJson = (input) => {
