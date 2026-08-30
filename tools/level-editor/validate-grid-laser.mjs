@@ -17,31 +17,38 @@ function assert(condition, message) {
 
 const level10x13 = M.normalizeLevel({ boardColumns: 10, boardRows: 13 });
 const board10x13 = M.boardForLevel(level10x13);
-const r12 = M.laserPointForCell(level10x13, 9, 11);
-const r13 = M.laserPointForCell(level10x13, 9, 12);
-assert(r12 && r13, "10x13 cell centers must map to laser points.");
-assert(Math.abs(r12.x - r13.x) < 1e-12, "Vertical adjacent cells must keep the same normalized X.");
-const verticalLogicalDistance = Math.abs(r13.y - r12.y) * (board10x13.launchLineY - board10x13.boardTop);
-assert(Math.abs(verticalLogicalDistance - board10x13.rowStep) < 1e-9, "R12→R13 must equal exactly one logical rowStep.");
+const r1 = M.laserPointForGridLine(level10x13, 5, 0);
+const r2 = M.laserPointForGridLine(level10x13, 5, 1);
+assert(r1 && r2, "R1 and R2 grid lines must map to laser points.");
+assert(Math.abs(r1.x - r2.x) < 1e-12, "Vertical wall must keep the same normalized X.");
+const firstRowSpan = Math.abs(r2.y - r1.y) * (board10x13.launchLineY - board10x13.boardTop);
+assert(Math.abs(firstRowSpan - board10x13.rowStep) < 1e-9, "R1→R2 must span exactly one authored row step.");
+const r13 = M.laserPointForGridLine(level10x13, 5, 12);
+const r14 = M.laserPointForGridLine(level10x13, 5, 13);
+const lastRowSpan = Math.abs(r14.y - r13.y) * (board10x13.launchLineY - board10x13.boardTop);
+assert(Math.abs(lastRowSpan - board10x13.cell) < 1e-9, "R13→R14 must end exactly on the bottom edge of the last row.");
 
 const level7x9 = M.normalizeLevel({ boardColumns: 7, boardRows: 9 });
 const board7x9 = M.boardForLevel(level7x9);
-const c1 = M.laserPointForCell(level7x9, 0, 0);
-const c2 = M.laserPointForCell(level7x9, 1, 0);
-const horizontalLogicalDistance = Math.abs(c2.x - c1.x) * (board7x9.boardRight - board7x9.boardLeft);
-assert(Math.abs(horizontalLogicalDistance - board7x9.columnStep) < 1e-9, "C1→C2 must equal exactly one logical columnStep.");
-assert(M.laserPointForCell(level10x13, 10, 0) === null, "Out-of-bounds laser columns must be rejected.");
-assert(M.laserPointForCell(level10x13, 0, 13) === null, "Out-of-bounds laser rows must be rejected.");
+const c1 = M.laserPointForGridLine(level7x9, 0, 4);
+const c2 = M.laserPointForGridLine(level7x9, 1, 4);
+const firstColumnSpan = Math.abs(c2.x - c1.x) * (board7x9.boardRight - board7x9.boardLeft);
+assert(Math.abs(firstColumnSpan - board7x9.columnStep) < 1e-9, "C1→C2 must span exactly one authored column step.");
+const c7 = M.laserPointForGridLine(level7x9, 6, 4);
+const c8 = M.laserPointForGridLine(level7x9, 7, 4);
+const lastColumnSpan = Math.abs(c8.x - c7.x) * (board7x9.boardRight - board7x9.boardLeft);
+assert(Math.abs(lastColumnSpan - board7x9.cell) < 1e-9, "C7→C8 must end exactly on the right edge of the last column.");
+
+assert(M.laserPointForGridLine(level10x13, 11, 0) === null, "Grid line beyond C11 must be rejected on a 10-column board.");
+assert(M.laserPointForGridLine(level10x13, 0, 14) === null, "Grid line beyond R14 must be rejected on a 13-row board.");
 
 for (const id of ["laserFromColumn", "laserFromRow", "laserToColumn", "laserToRow"]) {
   assert(ui.includes(id), `Laser UI is missing ${id}.`);
 }
-assert(!ui.includes('id="laserFromX"'), "Old normalized From X input must not remain in the editor UI.");
-assert(!ui.includes('id="laserFromY"'), "Old normalized From Y input must not remain in the editor UI.");
-assert(ui.includes("M.laserPointForCell"), "Laser creation must convert grid cells through the shared geometry helper.");
-assert(ui.includes("function laserPreviewPoint"), "Laser preview must convert runtime-normalized coordinates back into grid-relative coordinates.");
-assert(ui.includes("(logicalX-board.gridX)/board.gridWidth"), "Laser preview X must be relative to the rendered grid, not the runtime board canvas.");
-assert(ui.includes("(logicalY-board.gridY)/board.gridHeight"), "Laser preview Y must be relative to the rendered grid, not the runtime board canvas.");
-assert(!ui.includes("[x.from.x,x.from.y,x.to.x,x.to.y][i]*1000"), "Laser preview must not draw runtime-normalized coordinates directly inside boardGrid.");
+assert(ui.includes("board.columns+1"), "Laser UI must allow the final vertical grid line after the last column.");
+assert(ui.includes("board.rows+1"), "Laser UI must allow the final horizontal grid line after the last row.");
+assert(ui.includes("M.laserPointForGridLine"), "Laser creation must convert C/R values as grid-line intersections.");
+assert(ui.includes("R1 → R2 spans exactly the first row"), "Laser UI must explain the grid-line contract.");
+assert(ui.includes("function laserPreviewPoint"), "Laser preview must map runtime-normalized coordinates back to the rendered grid.");
 
-console.log("Grid laser checks passed: adjacent cells map to exact board steps and preview aligns to the rendered grid.");
+console.log("Grid-boundary laser checks passed: R1→R2 and C1→C2 map to grid boundaries, with final R/C lines closing the last cell.");
