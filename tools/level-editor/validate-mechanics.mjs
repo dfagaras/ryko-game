@@ -22,7 +22,10 @@ if (exported.mechanics.launchers.length !== 8) throw new Error("Expected all 8 s
 for (let index = 0; index < M.MECHANIC_DIRECTIONS.length; index += 1) {
   if (exported.mechanics.launchers[index].direction !== M.MECHANIC_DIRECTIONS[index]) throw new Error(`Launcher direction ${M.MECHANIC_DIRECTIONS[index]} was not preserved.`);
 }
-if (exported.mechanics.lasers[0].to.x !== 1) throw new Error("Laser endpoint was not preserved.");
+const board = M.boardForLevel(level);
+const exportedLaser = exported.mechanics.lasers[0];
+const exportedToLogicalX = board.boardLeft + exportedLaser.to.x * (board.boardRight - board.boardLeft);
+if (Math.abs(exportedToLogicalX - (board.gridX + board.gridWidth)) > 1e-9) throw new Error("Laser endpoint was not snapped to the rightmost grid boundary.");
 
 const custom = M.normalizeLevel({
   ...M.createDefaultLevel(),
@@ -44,4 +47,4 @@ if (!lastRowLauncher || lastRowLauncher.column !== 9 || lastRowLauncher.row !== 
   throw new Error("10x13 launcher on row 13 was not preserved exactly.");
 }
 
-console.log("Mechanics validation passed: 8 launcher directions, laser timing, and 10x13 row-13 launcher placement are preserved.");
+console.log("Mechanics validation passed: 8 launcher directions, grid-snapped laser timing, and 10x13 row-13 launcher placement are preserved.");
