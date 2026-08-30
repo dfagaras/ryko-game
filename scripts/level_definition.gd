@@ -90,8 +90,20 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 		if _validate_entity(initial_board[index], profile, "Initial cell %d" % (index + 1), errors, false):
 			if str((initial_board[index] as Dictionary).get("kind", "")) == "block":
 				initial_block_count += 1
-	if initial_block_count == 0:
-		errors.append("The initial board needs at least one block.")
+
+	var top_variant: Variant = level.get("topRow", [])
+	if typeof(top_variant) != TYPE_ARRAY:
+		errors.append("topRow must be an array.")
+		top_variant = []
+	var top_row: Array = top_variant
+	var top_block_count := 0
+	for index in range(top_row.size()):
+		if _validate_entity(top_row[index], profile, "Top row cell %d" % (index + 1), errors, true):
+			if str((top_row[index] as Dictionary).get("kind", "")) == "block":
+				top_block_count += 1
+
+	if initial_block_count + top_block_count == 0:
+		errors.append("The authored start needs at least one block on the initial board or top row.")
 
 	var incoming_variant: Variant = level.get("incomingRows", [])
 	if typeof(incoming_variant) != TYPE_ARRAY:
@@ -113,7 +125,7 @@ static func normalize_level(raw: Dictionary) -> Dictionary:
 			_validate_entity(cells[cell_index], profile, "Incoming +%d cell %d" % [row_index + 1, cell_index + 1], errors, true)
 
 	if mode == "descent" and incoming_rows.is_empty():
-		warnings.append("No authored incoming rows: only the initial board will descend.")
+		warnings.append("No authored incoming rows: only the authored start will descend.")
 	if float(profile["visual_scale"]) <= (1.0 / 3.0):
 		warnings.append("%dx%d micro-grid: gameplay elements render at %.0f%% of standard size." % [columns, rows, 100.0 * float(profile["visual_scale"])])
 	var standard_ratio := float(BoardProfile.BASE_COLUMNS) / float(BoardProfile.BASE_ROWS)
