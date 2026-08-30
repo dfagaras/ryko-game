@@ -51,6 +51,25 @@ const exported = JSON.parse(M.toExportJson(level));
 assert.equal(exported.incomingRows[0].cells[0].variant, "mission_core");
 assert.equal(exported.incomingRows[0].launchers[0].id, "incoming_launcher_1");
 assert.equal(exported.rules.winCondition, "destroy_all_objectives");
+assert.equal(exported.rules.loseCondition, "block_reaches_launch_line");
+assert.equal(Object.hasOwn(exported.rules, "moveLimit"), false);
+
+const topRowOnly = M.validateLevel({
+  ...M.createDefaultLevel(),
+  levelId: "top_row_only",
+  name: "Top row only",
+  rules: { mode: "descent", startingBalls: 2 },
+  initialBoard: [],
+  topRow: [
+    { kind:"block", shape:"square", variant:"mission_core", hp:5, column:3 }
+  ],
+  incomingRows: [
+    { afterMove:1, cells:[{ kind:"block", shape:"square", variant:"mission_core", hp:7, column:1 }] }
+  ]
+});
+assert.equal(topRowOnly.valid, true, topRowOnly.errors.join("; "));
+assert.equal(M.missionBlockCount(topRowOnly.level), 2);
+assert.doesNotMatch(topRowOnly.errors.join("\n"), /initial board needs at least one block/i);
 
 const duplicate = M.validateLevel({
   ...level,
