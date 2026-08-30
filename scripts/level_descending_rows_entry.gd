@@ -1,6 +1,7 @@
 extends "res://scripts/level_multicell_blocks_entry.gd"
 
 var authored_spawned_incoming_rows := 0
+var authored_future_mission_cores := 0
 
 
 func _load_authored_level(path: String) -> void:
@@ -8,6 +9,7 @@ func _load_authored_level(path: String) -> void:
 	if not authored_mode:
 		return
 	authored_spawned_incoming_rows = 0
+	authored_future_mission_cores = _count_mission_cores_in_incoming_range(0)
 	# The editor's Top Row is the authored row immediately above R1. Spawn it as
 	# row -1 so it is playable immediately and joins the normal first descent.
 	for entity_variant in authored_level.get("topRow", []):
@@ -16,22 +18,33 @@ func _load_authored_level(path: String) -> void:
 	queue_redraw()
 
 
-func _future_mission_core_count() -> int:
+func _mission_cores_in_row(row_def: Dictionary) -> int:
+	var count := 0
+	for entity_variant in row_def.get("cells", []):
+		if typeof(entity_variant) != TYPE_DICTIONARY:
+			continue
+		var entity: Dictionary = entity_variant
+		if String(entity.get("kind", "")) == "block" and String(entity.get("variant", "normal")) == MISSION_VARIANT:
+			count += 1
+	return count
+
+
+func _count_mission_cores_in_incoming_range(start_index: int) -> int:
 	if not authored_mode:
 		return 0
 	var incoming_rows: Array = authored_level.get("incomingRows", [])
 	var count := 0
-	for row_index in range(authored_spawned_incoming_rows, incoming_rows.size()):
+	for row_index in range(maxi(0, start_index), incoming_rows.size()):
 		var row_variant: Variant = incoming_rows[row_index]
-		if typeof(row_variant) != TYPE_DICTIONARY:
-			continue
-		for entity_variant in (row_variant as Dictionary).get("cells", []):
-			if typeof(entity_variant) != TYPE_DICTIONARY:
-				continue
-			var entity: Dictionary = entity_variant
-			if String(entity.get("kind", "")) == "block" and String(entity.get("variant", "normal")) == MISSION_VARIANT:
-				count += 1
+		if typeof(row_variant) == TYPE_DICTIONARY:
+			count += _mission_cores_in_row(row_variant as Dictionary)
 	return count
+
+
+func _future_mission_core_count() -> int:
+	if not authored_mode:
+		return 0
+	return maxi(0, authored_future_mission_cores)
 
 
 func _live_mission_core_count() -> int:
@@ -92,7 +105,9 @@ func _begin_authored_board_advance() -> void:
 	if incoming_index >= 0 and incoming_index < incoming_rows.size():
 		var row_variant: Variant = incoming_rows[incoming_index]
 		if typeof(row_variant) == TYPE_DICTIONARY:
-			_spawn_incoming_launchers(row_variant as Dictionary)
+			var row_def: Dictionary = row_variant
+			_spawn_incoming_launchers(row_def)
+			authored_future_mission_cores = maxi(0, authored_future_mission_cores - _mission_cores_in_row(row_def))
 		authored_spawned_incoming_rows = maxi(authored_spawned_incoming_rows, incoming_index + 1)
 
 	_mark_launcher_move_targets()
