@@ -400,6 +400,7 @@
     else delete level.boardScale;
     if (!level.board.scale) delete level.board.scale;
     level.rules.loseCondition = level.rules.mode === MODES.CLEAR_LIMITED ? "move_limit" : "block_reaches_launch_line";
+    if (level.rules.mode === MODES.DESCENT) delete level.rules.moveLimit;
     activeBoardColumns = level.board.columns;
     activeBoardRows = level.board.rows;
     return JSON.stringify(level, null, 2);
