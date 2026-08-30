@@ -43,6 +43,51 @@
     };
   }
 
+  function laserSegmentForCells(level, fromColumnRaw, fromRowRaw, toColumnRaw, toRowRaw) {
+    const board = M.boardForLevel(level || {});
+    const fromColumn = Math.trunc(Number(fromColumnRaw));
+    const fromRow = Math.trunc(Number(fromRowRaw));
+    const toColumn = Math.trunc(Number(toColumnRaw));
+    const toRow = Math.trunc(Number(toRowRaw));
+    const valid = (column, row) => Number.isInteger(column) && Number.isInteger(row) && column >= 0 && column < board.columns && row >= 0 && row < board.rows;
+    if (!valid(fromColumn, fromRow) || !valid(toColumn, toRow) || (fromColumn === toColumn && fromRow === toRow)) return null;
+
+    const fromCenter = {
+      x: board.gridX + fromColumn * board.columnStep + board.cell * 0.5,
+      y: board.gridY + fromRow * board.rowStep + board.cell * 0.5
+    };
+    const toCenter = {
+      x: board.gridX + toColumn * board.columnStep + board.cell * 0.5,
+      y: board.gridY + toRow * board.rowStep + board.cell * 0.5
+    };
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+    const length = Math.hypot(dx, dy);
+    if (!(length > 0)) return null;
+    const ux = dx / length;
+    const uy = dy / length;
+    const dominant = Math.max(Math.abs(ux), Math.abs(uy));
+    if (!(dominant > 0)) return null;
+    const edgeDistance = (board.cell * 0.5) / dominant;
+
+    const fromLogical = { x: fromCenter.x - ux * edgeDistance, y: fromCenter.y - uy * edgeDistance };
+    const toLogical = { x: toCenter.x + ux * edgeDistance, y: toCenter.y + uy * edgeDistance };
+    const laserWidth = board.boardRight - board.boardLeft;
+    const laserHeight = board.launchLineY - board.boardTop;
+    if (!(laserWidth > 0) || !(laserHeight > 0)) return null;
+
+    return {
+      from: {
+        x: clamp01((fromLogical.x - board.boardLeft) / laserWidth),
+        y: clamp01((fromLogical.y - board.boardTop) / laserHeight)
+      },
+      to: {
+        x: clamp01((toLogical.x - board.boardLeft) / laserWidth),
+        y: clamp01((toLogical.y - board.boardTop) / laserHeight)
+      }
+    };
+  }
+
   function normalizeMechanics(raw, level) {
     const source = raw && typeof raw === "object" ? raw : {};
     const board = M.boardForLevel(level || {});
@@ -116,5 +161,6 @@
   M.MECHANIC_SIDES = SIDES;
   M.normalizeMechanics = normalizeMechanics;
   M.laserPointForCell = laserPointForCell;
+  M.laserSegmentForCells = laserSegmentForCells;
   M.__mechanicsExtended = true;
 })();
