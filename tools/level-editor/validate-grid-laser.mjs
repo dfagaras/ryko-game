@@ -15,6 +15,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function near(a, b, epsilon = 1e-9) {
+  return Math.abs(a - b) <= epsilon;
+}
+
 const level10x13 = M.normalizeLevel({ boardColumns: 10, boardRows: 13 });
 const board10x13 = M.boardForLevel(level10x13);
 const r1 = M.laserPointForGridLine(level10x13, 5, 0);
@@ -42,6 +46,50 @@ assert(Math.abs(lastColumnSpan - board7x9.cell) < 1e-9, "C7→C8 must end exactl
 assert(M.laserPointForGridLine(level10x13, 11, 0) === null, "Grid line beyond C11 must be rejected on a 10-column board.");
 assert(M.laserPointForGridLine(level10x13, 0, 14) === null, "Grid line beyond R14 must be rejected on a 13-row board.");
 
+// Regression for the exact bug: lasers saved by the old editor used cell centers.
+// Normalization must migrate those stale points to the nearest grid boundaries.
+const oldFromLogical = {
+  x: board7x9.gridX + 3 * board7x9.columnStep + board7x9.cell * 0.5,
+  y: board7x9.gridY + 1 * board7x9.rowStep + board7x9.cell * 0.5
+};
+const oldToLogical = {
+  x: board7x9.gridX + 3 * board7x9.columnStep + board7x9.cell * 0.5,
+  y: board7x9.gridY + 2 * board7x9.rowStep + board7x9.cell * 0.5
+};
+const legacyLaserLevel = M.normalizeLevel({
+  boardColumns: 7,
+  boardRows: 9,
+  mechanics: {
+    lasers: [{
+      id: "legacy_r2_r3",
+      from: {
+        x: (oldFromLogical.x - board7x9.boardLeft) / (board7x9.boardRight - board7x9.boardLeft),
+        y: (oldFromLogical.y - board7x9.boardTop) / (board7x9.launchLineY - board7x9.boardTop)
+      },
+      to: {
+        x: (oldToLogical.x - board7x9.boardLeft) / (board7x9.boardRight - board7x9.boardLeft),
+        y: (oldToLogical.y - board7x9.boardTop) / (board7x9.launchLineY - board7x9.boardTop)
+      },
+      onSeconds: 1.5,
+      offSeconds: 1
+    }]
+  }
+});
+const migrated = legacyLaserLevel.mechanics.lasers[0];
+const expectedFrom = M.laserPointForGridLine(level7x9, 3, 1);
+const expectedTo = M.laserPointForGridLine(level7x9, 3, 2);
+assert(near(migrated.from.x, expectedFrom.x) && near(migrated.from.y, expectedFrom.y), "Legacy R2 cell-center start must snap to the R2 grid boundary.");
+assert(near(migrated.to.x, expectedTo.x) && near(migrated.to.y, expectedTo.y), "Legacy R3 cell-center end must snap to the R3 grid boundary.");
+
+const exactLaserLevel = M.normalizeLevel({
+  boardColumns: 7,
+  boardRows: 9,
+  mechanics: { lasers: [{ id: "exact", from: expectedFrom, to: expectedTo, onSeconds: 1.5, offSeconds: 1 }] }
+});
+const exact = exactLaserLevel.mechanics.lasers[0];
+assert(near(exact.from.x, expectedFrom.x) && near(exact.from.y, expectedFrom.y), "Already-correct grid endpoints must stay unchanged.");
+assert(near(exact.to.x, expectedTo.x) && near(exact.to.y, expectedTo.y), "Already-correct grid endpoints must stay unchanged.");
+
 for (const id of ["laserFromColumn", "laserFromRow", "laserToColumn", "laserToRow"]) {
   assert(ui.includes(id), `Laser UI is missing ${id}.`);
 }
@@ -51,4 +99,4 @@ assert(ui.includes("M.laserPointForGridLine"), "Laser creation must convert C/R 
 assert(ui.includes("R1 → R2 spans exactly the first row"), "Laser UI must explain the grid-line contract.");
 assert(ui.includes("function laserPreviewPoint"), "Laser preview must map runtime-normalized coordinates back to the rendered grid.");
 
-console.log("Grid-boundary laser checks passed: R1→R2 and C1→C2 map to grid boundaries, with final R/C lines closing the last cell.");
+console.log("Grid-boundary laser checks passed, including migration of legacy cell-center R2→R3 endpoints.");
