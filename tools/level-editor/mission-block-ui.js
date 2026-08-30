@@ -6,11 +6,12 @@
   const STORAGE_KEY = "ryko-level-editor-v1";
   const MISSION_TOOL = "mission_core";
   const SESSION_KEY = "ryko-mission-tool-active";
+  const SIZE_KEY = "ryko-block-size";
 
   const style = document.createElement("style");
   style.textContent = `
     .entity.block.mission_core{border-color:#55b8b1!important;background:#0c2025!important;overflow:hidden;position:relative}
-    .entity.block.mission_core .mission-core-art{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;z-index:1;pointer-events:none}
+    .entity.block.mission_core .mission-core-art{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;z-index:1;pointer-events:none}
     .entity.block.mission_core .hp{z-index:2;bottom:2px;top:auto;transform:translateX(-50%);font-size:.78em;color:#f2e3bb;text-shadow:0 1px 2px #020b0e}
     .tool[data-tool="mission_core"] .tool-icon img{width:34px;height:34px;object-fit:contain}
   `;
@@ -34,6 +35,12 @@
 
   function missionActive() {
     return document.querySelector('.tool[data-tool="mission_core"]')?.classList.contains("active") === true;
+  }
+
+  function selectedSize() {
+    const select = document.getElementById("multicellBlockSize");
+    const value = Math.trunc(Number(select?.value || sessionStorage.getItem(SIZE_KEY) || 1));
+    return Math.min(Number(M.MULTICELL_MAX_SPAN || 4), Math.max(1, value || 1));
   }
 
   function addMissionButton() {
@@ -61,13 +68,23 @@
   function addMissionAt(scope, column, row = 0) {
     const level = loadLevel();
     const hp = Math.max(1, Number.parseInt(document.getElementById("defaultHp")?.value || "1", 10) || 1);
-    const entity = { kind:"block", shape:"square", variant:MISSION_TOOL, hp, column, row };
+    const size = scope === "initial" ? selectedSize() : 1;
+    const entity = { kind:"block", shape:"square", variant:MISSION_TOOL, hp, column, row, widthCells:size, heightCells:size };
     if (scope === "initial") {
-      level.initialBoard = (level.initialBoard || []).filter((item) => !(item.column === column && item.row === row));
+      const board = M.boardForLevel(level);
+      if (column + size > board.columns || row + size > board.rows) {
+        window.alert(`${size}×${size} Mission Core does not fit from C${column + 1} R${row + 1}.`);
+        return;
+      }
+      const conflict = M.blockFootprintConflict?.(level.initialBoard || [], entity);
+      if (conflict) {
+        window.alert("Those cells are already occupied. Erase the existing piece first.");
+        return;
+      }
       level.initialBoard.push(entity);
     } else {
       level.topRow = (level.topRow || []).filter((item) => item.column !== column);
-      const top = { ...entity }; delete top.row;
+      const top = { ...entity }; delete top.row; delete top.widthCells; delete top.heightCells;
       level.topRow.push(top);
     }
     saveLevel(level);
