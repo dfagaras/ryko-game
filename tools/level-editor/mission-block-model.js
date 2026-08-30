@@ -104,10 +104,15 @@
   M.validateLevel = (input) => {
     const base = baseValidateLevel(input);
     const normalized = M.normalizeLevel(input || {});
-    const errors = [...base.errors];
+    let errors = [...base.errors];
     const warnings = [...base.warnings].filter((message) => !/Mission Core objective\(s\)/i.test(String(message)));
     const triangleMissionCount = rawTriangleMissionCount(input || {});
     if (triangleMissionCount > 0) errors.push("Mission Core is square-only; triangles cannot be mission objectives.");
+
+    const topRowBlocks = (normalized.topRow || []).filter((entity) => entity?.kind === "block").length;
+    if (topRowBlocks > 0) {
+      errors = errors.filter((message) => !String(message).includes("initial board needs at least one block"));
+    }
 
     const seenIds = new Set((normalized.mechanics?.launchers || []).map((launcher) => launcher.id));
     for (let rowIndex = 0; rowIndex < (normalized.incomingRows || []).length; rowIndex += 1) {
