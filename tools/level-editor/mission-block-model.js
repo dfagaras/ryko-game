@@ -7,6 +7,7 @@
   const MISSION_VARIANT = "mission_core";
   const MISSION_WIN = "destroy_all_objectives";
   const CLEAR_WIN = "clear_all_content";
+  const DIRECTIONS = new Set(M.MECHANIC_DIRECTIONS || ["up", "up_right", "right", "down_right", "down", "down_left", "left", "up_left"]);
   const baseNormalizeLevel = M.normalizeLevel.bind(M);
   const baseValidateLevel = M.validateLevel.bind(M);
   const baseToExportJson = M.toExportJson.bind(M);
@@ -25,6 +26,34 @@
       item?.kind === "block" && item?.variant === MISSION_VARIANT && item?.shape !== "triangle" && Number(item.column) === column);
   }
 
+  function normalizeIncomingLauncher(item, rowIndex, launcherIndex, board) {
+    if (!item || typeof item !== "object") return null;
+    const column = Math.trunc(Number(item.column));
+    if (!Number.isInteger(column) || column < 0 || column >= board.columns) return null;
+    return {
+      id: String(item.id || `incoming_${rowIndex + 1}_launcher_${launcherIndex + 1}`),
+      column,
+      direction: DIRECTIONS.has(item.direction) ? item.direction : "up"
+    };
+  }
+
+  function restoreIncomingLaunchers(source, target) {
+    const sourceRows = Array.isArray(source?.incomingRows) ? source.incomingRows : [];
+    const board = M.boardForLevel(target || source || {});
+    for (let rowIndex = 0; rowIndex < (target.incomingRows || []).length; rowIndex += 1) {
+      const rawLaunchers = Array.isArray(sourceRows[rowIndex]?.launchers) ? sourceRows[rowIndex].launchers : [];
+      const occupied = new Set();
+      target.incomingRows[rowIndex].launchers = [];
+      rawLaunchers.forEach((item, launcherIndex) => {
+        const launcher = normalizeIncomingLauncher(item, rowIndex, launcherIndex, board);
+        if (!launcher || occupied.has(launcher.column)) return;
+        occupied.add(launcher.column);
+        target.incomingRows[rowIndex].launchers.push(launcher);
+      });
+    }
+    return target;
+  }
+
   function restoreMissionVariants(source, target) {
     for (const entity of target.initialBoard || []) {
       if (entity.kind !== "block" || entity.shape === "triangle") continue;
@@ -40,6 +69,7 @@
       if (entity.kind !== "block" || entity.shape === "triangle") continue;
       if (sourceMissionAt(source, "top", -1, entity.column, 0)) entity.variant = MISSION_VARIANT;
     }
+    restoreIncomingLaunchers(source, target);
     const objectiveCount = missionCount(target);
     target.rules = target.rules || {};
     target.rules.winCondition = objectiveCount > 0 ? MISSION_WIN : CLEAR_WIN;
@@ -67,6 +97,9 @@
   M.MISSION_BLOCK_VARIANT = MISSION_VARIANT;
   M.MISSION_WIN_CONDITION = MISSION_WIN;
   M.missionBlockCount = missionCount;
+  M.normalizeIncomingLauncher = normalizeIncomingLauncher;
+  M.restoreIncomingLaunchers = restoreIncomingLaunchers;
+  M.__descendingRowEntitiesExtended = true;
   M.normalizeLevel = (input) => restoreMissionVariants(input || {}, baseNormalizeLevel(input));
   M.validateLevel = (input) => {
     const base = baseValidateLevel(input);
@@ -75,6 +108,16 @@
     const warnings = [...base.warnings].filter((message) => !/Mission Core objective\(s\)/i.test(String(message)));
     const triangleMissionCount = rawTriangleMissionCount(input || {});
     if (triangleMissionCount > 0) errors.push("Mission Core is square-only; triangles cannot be mission objectives.");
+
+    const seenIds = new Set((normalized.mechanics?.launchers || []).map((launcher) => launcher.id));
+    for (let rowIndex = 0; rowIndex < (normalized.incomingRows || []).length; rowIndex += 1) {
+      for (const launcher of normalized.incomingRows[rowIndex].launchers || []) {
+        if (!DIRECTIONS.has(launcher.direction)) errors.push(`Incoming +${rowIndex + 1} launcher ${launcher.id}: invalid direction.`);
+        if (seenIds.has(launcher.id)) errors.push(`Duplicate mechanic id: ${launcher.id}.`);
+        seenIds.add(launcher.id);
+      }
+    }
+
     if (normalized.rules?.winCondition === MISSION_WIN && missionCount(normalized) === 0) {
       errors.push("Mission objective levels need at least one Mission Core block.");
     }
