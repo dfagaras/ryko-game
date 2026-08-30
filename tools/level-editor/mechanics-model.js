@@ -25,14 +25,18 @@
     row: Number(item?.row) === -1 ? -1 : Math.min(board.rows - 1, Math.max(0, Math.trunc(Number(item?.row) || 0)))
   });
 
-  function laserPointForCell(level, rawColumn, rawRow) {
+  function laserPointForGridLine(level, rawColumnLine, rawRowLine) {
     const board = M.boardForLevel(level || {});
-    const column = Math.trunc(Number(rawColumn));
-    const row = Math.trunc(Number(rawRow));
-    if (!Number.isInteger(column) || !Number.isInteger(row) || column < 0 || column >= board.columns || row < 0 || row >= board.rows) return null;
+    const columnLine = Math.trunc(Number(rawColumnLine));
+    const rowLine = Math.trunc(Number(rawRowLine));
+    if (!Number.isInteger(columnLine) || !Number.isInteger(rowLine) || columnLine < 0 || columnLine > board.columns || rowLine < 0 || rowLine > board.rows) return null;
 
-    const logicalX = board.gridX + column * board.columnStep + board.cell * 0.5;
-    const logicalY = board.gridY + row * board.rowStep + board.cell * 0.5;
+    const logicalX = columnLine === board.columns
+      ? board.gridX + board.gridWidth
+      : board.gridX + columnLine * board.columnStep;
+    const logicalY = rowLine === board.rows
+      ? board.gridY + board.gridHeight
+      : board.gridY + rowLine * board.rowStep;
     const laserWidth = board.boardRight - board.boardLeft;
     const laserHeight = board.launchLineY - board.boardTop;
     if (!(laserWidth > 0) || !(laserHeight > 0)) return null;
@@ -115,6 +119,6 @@
   M.MECHANIC_DIRECTIONS = DIRECTIONS;
   M.MECHANIC_SIDES = SIDES;
   M.normalizeMechanics = normalizeMechanics;
-  M.laserPointForCell = laserPointForCell;
+  M.laserPointForGridLine = laserPointForGridLine;
   M.__mechanicsExtended = true;
 })();
