@@ -5,8 +5,15 @@ var authored_spawned_incoming_rows := 0
 
 func _load_authored_level(path: String) -> void:
 	super._load_authored_level(path)
-	if authored_mode:
-		authored_spawned_incoming_rows = 0
+	if not authored_mode:
+		return
+	authored_spawned_incoming_rows = 0
+	# The editor's Top Row is the authored row immediately above R1. Spawn it as
+	# row -1 so it is playable immediately and joins the normal first descent.
+	for entity_variant in authored_level.get("topRow", []):
+		if typeof(entity_variant) == TYPE_DICTIONARY:
+			_spawn_authored_entity(entity_variant as Dictionary, -1)
+	queue_redraw()
 
 
 func _future_mission_core_count() -> int:
