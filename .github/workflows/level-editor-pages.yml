@@ -44,10 +44,12 @@ jobs:
           node --check tools/level-editor/editor-extras.js
           node --check tools/level-editor/mission-block-ui.js
           node --check tools/level-editor/mechanics-ui.js
+          node --check tools/level-editor/descending-row-ui.js
           node --check tools/level-editor/multicell-block-ui.js
           node --check tools/level-editor/validate-editor-interactions.mjs
           node --check tools/level-editor/validate-grid-laser.mjs
           node --check tools/level-editor/validate-multicell-blocks.mjs
+          node --check tools/level-editor/validate-descending-row-entities.mjs
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
           node tools/level-editor/validate-top-row-bounds.mjs
@@ -56,6 +58,7 @@ jobs:
           node tools/level-editor/validate-editor-interactions.mjs
           node tools/level-editor/validate-grid-laser.mjs
           node tools/level-editor/validate-multicell-blocks.mjs
+          node tools/level-editor/validate-descending-row-entities.mjs
 
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/develop'
@@ -81,6 +84,7 @@ jobs:
           cp tools/level-editor/editor-extras.js "$site/editor-extras.js"
           cp tools/level-editor/mission-block-ui.js "$site/mission-block-ui.js"
           cp tools/level-editor/mechanics-ui.js "$site/mechanics-ui.js"
+          cp tools/level-editor/descending-row-ui.js "$site/descending-row-ui.js"
           cp tools/level-editor/multicell-block-ui.js "$site/multicell-block-ui.js"
           touch "$site/.nojekyll"
           cp assets/icons/block_black_hole.png "$site/assets/icons/"
@@ -94,6 +98,7 @@ jobs:
           cp "assets/ui/mission_block/rama (3).png" "$site/assets/ui/mission_block/"
           test -s "$site/mission-block-model.js"
           test -s "$site/mission-block-ui.js"
+          test -s "$site/descending-row-ui.js"
           test -s "$site/multicell-block-model.js"
           test -s "$site/multicell-block-ui.js"
           test -s "$site/mechanics-model.js"
