@@ -129,6 +129,23 @@
     }
   }, true);
 
+  function syncLauncherMark(cell, launcher) {
+    const existing = cell.querySelector(":scope > .descending-launcher-mark");
+    if (!launcher) {
+      if (existing) existing.remove();
+      return;
+    }
+    const glyph = GL[launcher.direction] || "↑";
+    if (existing) {
+      if (existing.textContent !== glyph) existing.textContent = glyph;
+      return;
+    }
+    const mark = document.createElement("div");
+    mark.className = "descending-launcher-mark";
+    mark.textContent = glyph;
+    cell.appendChild(mark);
+  }
+
   function decorateIncoming() {
     const host = document.getElementById("incomingEditor");
     if (!host) return;
@@ -138,7 +155,6 @@
     const cells = [...host.querySelectorAll(".incoming-cell")];
 
     cells.forEach((cell, column) => {
-      cell.querySelectorAll(".descending-launcher-mark").forEach((node) => node.remove());
       const entity = (row?.cells || []).find((item) => Number(item.column) === column);
       if (entity?.variant === MISSION_TOOL) {
         const visual = cell.querySelector(".entity");
@@ -152,26 +168,32 @@
         }
       }
       const launcher = (row?.launchers || []).find((item) => Number(item.column) === column);
-      if (launcher) {
-        const mark = document.createElement("div");
-        mark.className = "descending-launcher-mark";
-        mark.textContent = GL[launcher.direction] || "↑";
-        cell.appendChild(mark);
-      }
+      syncLauncherMark(cell, launcher);
     });
 
     document.querySelectorAll("#timelineTabs .timeline-tab").forEach((tab, index) => {
       const rowDef = level.incomingRows[index];
       if (!rowDef) return;
       const count = (rowDef.cells || []).length + (rowDef.launchers || []).length;
-      tab.textContent = `+${index + 1}${count ? ` · ${count}` : " · blank"}`;
+      const nextText = `+${index + 1}${count ? ` · ${count}` : " · blank"}`;
+      if (tab.textContent !== nextText) tab.textContent = nextText;
     });
+  }
+
+  function incomingLauncherSignature(level) {
+    return (level.incomingRows || []).flatMap((row, rowIndex) =>
+      (row.launchers || []).map((launcher) => `${rowIndex}:${launcher.id}:${launcher.column}:${launcher.direction}`)
+    ).join("|");
   }
 
   function appendIncomingLauncherList() {
     const host = document.getElementById("launcherList");
-    if (!host || host.querySelector("[data-incoming-launcher='1']")) return;
+    if (!host) return;
     const level = loadLevel();
+    const signature = incomingLauncherSignature(level);
+    if (host.dataset.incomingLauncherSignature === signature) return;
+
+    host.querySelectorAll("[data-incoming-launcher='1']").forEach((node) => node.remove());
     level.incomingRows.forEach((row, rowIndex) => {
       (row.launchers || []).forEach((launcher) => {
         const item = document.createElement("div");
@@ -191,6 +213,7 @@
         host.appendChild(item);
       });
     });
+    host.dataset.incomingLauncherSignature = signature;
   }
 
   let scheduled = false;
@@ -210,7 +233,10 @@
   if (tabs) new MutationObserver(refreshSoon).observe(tabs, { childList:true, subtree:true, attributes:true, attributeFilter:["class"] });
   const launcherList = document.getElementById("launcherList");
   if (launcherList) new MutationObserver(() => {
-    if (!launcherList.querySelector("[data-incoming-launcher='1']")) refreshSoon();
+    if (!launcherList.querySelector("[data-incoming-launcher='1']")) {
+      delete launcherList.dataset.incomingLauncherSignature;
+      refreshSoon();
+    }
   }).observe(launcherList, { childList:true });
   refreshSoon();
 })();
