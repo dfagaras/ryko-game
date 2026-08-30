@@ -140,4 +140,9 @@
   const boardObserver = new MutationObserver(() => decorateMissionCells());
   const boardGrid = document.getElementById("boardGrid");
   if (boardGrid) boardObserver.observe(boardGrid, { childList:true, subtree:true });
+
+  const descendingUi = document.createElement("script");
+  descendingUi.src = "descending-row-ui.js";
+  descendingUi.defer = true;
+  document.body.appendChild(descendingUi);
 })();
