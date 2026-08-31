@@ -39,6 +39,7 @@ jobs:
           node --check tools/level-editor/mission-block-model.js
           node --check tools/level-editor/multicell-block-model.js
           node --check tools/level-editor/editor.js
+          node --check tools/level-editor/placement-state.js
           node --check tools/level-editor/scale-controls.js
           node --check tools/level-editor/ball-range-ui.js
           node --check tools/level-editor/editor-extras.js
@@ -50,6 +51,7 @@ jobs:
           node --check tools/level-editor/validate-grid-laser.mjs
           node --check tools/level-editor/validate-multicell-blocks.mjs
           node --check tools/level-editor/validate-descending-row-entities.mjs
+          node --check tools/level-editor/validate-placement-state.mjs
           node tools/level-editor/validate-editor.mjs
           node tools/level-editor/validate-ball-range.mjs
           node tools/level-editor/validate-top-row-bounds.mjs
@@ -59,6 +61,7 @@ jobs:
           node tools/level-editor/validate-grid-laser.mjs
           node tools/level-editor/validate-multicell-blocks.mjs
           node tools/level-editor/validate-descending-row-entities.mjs
+          node tools/level-editor/validate-placement-state.mjs
 
       - name: Configure GitHub Pages
         if: github.ref == 'refs/heads/develop'
@@ -79,6 +82,7 @@ jobs:
           cp tools/level-editor/mission-block-model.js "$site/mission-block-model.js"
           cp tools/level-editor/multicell-block-model.js "$site/multicell-block-model.js"
           cp tools/level-editor/editor.js "$site/editor.js"
+          cp tools/level-editor/placement-state.js "$site/placement-state.js"
           cp tools/level-editor/scale-controls.js "$site/scale-controls.js"
           cp tools/level-editor/ball-range-ui.js "$site/ball-range-ui.js"
           cp tools/level-editor/editor-extras.js "$site/editor-extras.js"
@@ -104,6 +108,7 @@ jobs:
           test -s "$site/mechanics-model.js"
           test -s "$site/mechanics-ui.js"
           test -s "$site/editor.js"
+          test -s "$site/placement-state.js"
           test -s "$site/assets/ui/mission_block/rama (3).png"
           grep -q 'mission-block-model.js' "$site/index.html"
           grep -q 'mission-block-ui.js' "$site/index.html"
@@ -111,6 +116,7 @@ jobs:
           grep -q 'multicell-block-ui.js' "$site/index.html"
           grep -q 'mechanics-model.js' "$site/index.html"
           grep -q 'mechanics-ui.js' "$site/index.html"
+          grep -q 'placement-state.js' "$site/index.html"
           if grep -q 'editor-interaction-fixes.js' "$site/index.html"; then
             echo "Obsolete interaction patch is still referenced by index.html"
             exit 1
