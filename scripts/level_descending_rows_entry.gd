@@ -10,11 +10,8 @@ func _load_authored_level(path: String) -> void:
 		return
 	authored_spawned_incoming_rows = 0
 	authored_future_mission_cores = _count_mission_cores_in_incoming_range(0)
-	# The editor's Top Row is the authored row immediately above R1. Spawn it as
-	# row -1 so it is playable immediately and joins the normal first descent.
-	for entity_variant in authored_level.get("topRow", []):
-		if typeof(entity_variant) == TYPE_DICTIONARY:
-			_spawn_authored_entity(entity_variant as Dictionary, -1)
+	# Top Row spawning is owned by level_test_entry.gd. This layer only adds
+	# descent behavior to those already-spawned row -1 entities.
 	queue_redraw()
 
 
