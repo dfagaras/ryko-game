@@ -20,6 +20,7 @@ on:
       - "tools/level-editor/validate-grid-laser.mjs"
       - "tools/level-editor/validate-multicell-blocks.mjs"
       - "tools/level-editor/validate-descending-row-entities.mjs"
+      - "tools/validate-top-row-runtime-spawn.mjs"
       - "scripts/level_mechanics_test_entry.gd"
       - "scripts/level_top_row_mechanics_test_entry.gd"
       - "scripts/level_authored_laser_geometry_entry.gd"
@@ -57,12 +58,14 @@ jobs:
           node --check tools/level-editor/validate-grid-laser.mjs
           node --check tools/level-editor/validate-multicell-blocks.mjs
           node --check tools/level-editor/validate-descending-row-entities.mjs
+          node --check tools/validate-top-row-runtime-spawn.mjs
           node tools/level-editor/validate-mechanics.mjs
           node tools/level-editor/validate-editor-interactions.mjs
           node tools/level-editor/validate-tool-switching.mjs
           node tools/level-editor/validate-grid-laser.mjs
           node tools/level-editor/validate-multicell-blocks.mjs
           node tools/level-editor/validate-descending-row-entities.mjs
+          node tools/validate-top-row-runtime-spawn.mjs
       - name: Validate mechanics GDScript parses
         shell: bash
         run: |
